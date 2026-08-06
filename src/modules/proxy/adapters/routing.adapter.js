@@ -23,14 +23,16 @@ function buildUpstreamRequest(input, service) {
   const body = {
     locations: input.locations.map((l) => ({ lat: l.lat, lon: l.lon })),
     costing: input.costing,
-    directions_options: { units: input.units },
+    units: input.units,
     alternates: input.alternates,
   };
   if (input.costing_options) body.costing_options = input.costing_options;
 
   return {
-    method: 'GET',
-    url: `${service.baseUrl}/route?json=${encodeURIComponent(JSON.stringify(body))}`,
+    method: 'POST',
+    url: `${service.baseUrl}/route`,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   };
 }
 
