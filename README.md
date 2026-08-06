@@ -15,7 +15,14 @@ docker compose up --build
 
 This starts Postgres, Redis, the backend (migrations + seeders run automatically on container start), and the admin panel. Backend on `http://localhost:5000`, admin panel on `http://localhost:5173`.
 
-The first boot seeds the RBAC pages/permissions catalog, a "Super Admin" role, the 7 proxy service registry rows, and creates one default admin account from `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` in `.env`. **Log in and change that password immediately.**
+The first boot seeds the RBAC pages/permissions catalog, a "Super Admin" role, the 7 proxy service registry rows, and one default admin account:
+
+```
+email:    admin@example.com
+password: ChangeMe123!
+```
+
+**Log in and change that password immediately** - these are placeholder credentials baked into `src/db/seeders/20260803130003-seed-default-admin.js`, not environment-configurable.
 
 ## Running locally (without Docker)
 

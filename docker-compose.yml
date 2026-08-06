@@ -1,3 +1,5 @@
+name: mapifyit-geo-platform
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -7,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     volumes:
-      - pakmaps_postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - '5432:5432'
     healthcheck:
@@ -20,7 +22,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     volumes:
-      - pakmaps_redis_data:/data
+      - redis_data:/data
     ports:
       - '6379:6379'
     healthcheck:
@@ -56,5 +58,5 @@ services:
       - '5173:80'
 
 volumes:
-  pakmaps_postgres_data:
-  pakmaps_redis_data:
+  postgres_data:
+  redis_data:

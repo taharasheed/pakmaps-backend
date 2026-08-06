@@ -24,10 +24,6 @@ const schema = z.object({
   COOKIE_NAME: z.string().default('pakmaps_jwt'),
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
 
-  DEFAULT_ADMIN_NAME: z.string().default('Super Admin'),
-  DEFAULT_ADMIN_EMAIL: z.string().email(),
-  DEFAULT_ADMIN_PASSWORD: z.string().min(8),
-
   ADMIN_PANEL_ORIGIN: z.string().min(1),
   TRUST_PROXY: z.string().default('loopback'),
 

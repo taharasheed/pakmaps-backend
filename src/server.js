@@ -3,7 +3,6 @@ const logger = require('./config/logger');
 const sequelize = require('./config/database');
 const { redis, queueConnection } = require('./config/redis');
 const app = require('./app');
-const { ensureDefaultAdmin } = require('./bootstrap');
 const { scheduleRepeatingJobs } = require('./jobs/scheduler');
 const { startWorkers } = require('./jobs/workers');
 
@@ -13,8 +12,6 @@ let workers = [];
 async function start() {
   await sequelize.authenticate();
   logger.info('Database connection established.');
-
-  await ensureDefaultAdmin();
 
   workers = startWorkers();
   await scheduleRepeatingJobs();
