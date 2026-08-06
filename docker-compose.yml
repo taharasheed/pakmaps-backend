@@ -1,5 +1,4 @@
 name: mapifyit-geo-platform
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,26 +10,24 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${DB_USER} -d ${DB_NAME}']
       interval: 5s
       timeout: 5s
       retries: 10
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     volumes:
       - redis_data:/data
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 5s
       retries: 10
-
   backend:
     build: .
     restart: unless-stopped
@@ -38,25 +35,25 @@ services:
     environment:
       DB_HOST: postgres
       REDIS_HOST: redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     ports:
-      - '5000:5000'
-
+      - '127.0.0.1:5000:5000'
   admin-panel:
     build:
-      context: ../pakmaps-adminpanel-frontend
+      context: ../mapifyit-admin-panel
       args:
         VITE_API_URL: ${ADMIN_PANEL_VITE_API_URL}
     restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - '5173:80'
-
+      - '127.0.0.1:5173:80'
 volumes:
   postgres_data:
   redis_data:
