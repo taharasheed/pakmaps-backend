@@ -1,6 +1,7 @@
 const env = require('../../config/env');
 const { upstreamFetch } = require('../proxy/httpClient');
 const { checkRateLimit } = require('../proxy/rateLimiter');
+const { buildCacheKey, getCached, setCached } = require('../proxy/cache');
 const {
   ContractError,
   validateMapMatchRequest,
@@ -9,6 +10,10 @@ const {
 } = require('./mapMatch.contract');
 
 const MAX_BODY_BYTES = 16 * 1024;
+// Idempotent-response window for a repeated (sessionGeneration, sequenceId)
+// pair - covers the mobile client retrying after its own ~1.5s timeout
+// without re-hitting Valhalla for a request we already answered.
+const IDEMPOTENCY_TTL_SECONDS = 5;
 
 // One in-flight map-match request per navigation session, enforced here at
 // the application level (per doc requirement). In-memory/per-instance is an
@@ -96,6 +101,12 @@ async function handleMapMatch(req, res) {
     throw caught;
   }
 
+  const idempotencyKey = buildCacheKey('mapmatch', `${req.user.id}:${request.sessionGeneration}:${request.sequenceId}`);
+  const cached = await getCached(idempotencyKey);
+  if (cached) {
+    return respond(res, 200, cached);
+  }
+
   try {
     await checkRateLimit({
       identity: `mapmatch:${req.user.id}`,
@@ -127,14 +138,18 @@ async function handleMapMatch(req, res) {
       throw caught;
     }
 
+    const latencyMs = Date.now() - started;
+    response.serverTimingMs = latencyMs;
+
     safeLog(logger, {
       requestId: request.requestId,
       sequenceId: request.sequenceId,
       status: response.status,
       sampleCount: request.samples.length,
-      latencyMs: Date.now() - started,
+      latencyMs,
     });
 
+    setCached(idempotencyKey, response, IDEMPOTENCY_TTL_SECONDS).catch(() => {});
     return respond(res, 200, response);
   } catch (caught) {
     const code = caught?.code === 'UPSTREAM_TIMEOUT' || caught?.code === 'UPSTREAM_INVALID'

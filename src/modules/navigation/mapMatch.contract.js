@@ -5,7 +5,7 @@
 // validation bounds and response shape, ported into this codebase's
 // conventions (CommonJS, our own error type) rather than copied verbatim.
 
-const MAX_SAMPLES = 12;
+const MAX_SAMPLES = 20;
 const MIN_SAMPLES = 2;
 const MAX_ID_LENGTH = 128;
 
@@ -71,9 +71,10 @@ function validateMapMatchRequest(input) {
     input.samples.length < MIN_SAMPLES ||
     input.samples.length > MAX_SAMPLES
   ) {
-    throw new ContractError('samples must contain 2 to 12 items');
+    throw new ContractError(`samples must contain ${MIN_SAMPLES} to ${MAX_SAMPLES} items`);
   }
 
+  const seenSampleIds = new Set();
   let previousTimestamp = -Infinity;
   const samples = input.samples.map((sample, index) => {
     if (!sample || typeof sample !== 'object' || Array.isArray(sample)) {
@@ -86,8 +87,14 @@ function validateMapMatchRequest(input) {
     }
     previousTimestamp = timestamp;
 
+    const id = opaqueId(sample.id, `samples[${index}].id`);
+    if (seenSampleIds.has(id)) {
+      throw new ContractError('duplicate sample id');
+    }
+    seenSampleIds.add(id);
+
     return {
-      id: opaqueId(sample.id, `samples[${index}].id`),
+      id,
       latitude: finiteNumber(sample.latitude, `samples[${index}].latitude`, -90, 90),
       longitude: finiteNumber(sample.longitude, `samples[${index}].longitude`, -180, 180),
       timestamp,
@@ -132,9 +139,11 @@ function buildValhallaRequest(request) {
     filters: {
       action: 'include',
       attributes: [
+        'shape',
         'matched.point',
         'matched.type',
         'matched.edge_index',
+        'matched.distance_along_edge',
         'matched.distance_from_trace_point',
         'edge.names',
         'edge.id',
@@ -142,6 +151,8 @@ function buildValhallaRequest(request) {
         'edge.begin_heading',
         'edge.end_heading',
         'edge.forward',
+        'edge.roundabout',
+        'edge.use',
       ],
     },
   };
@@ -156,6 +167,21 @@ function normalizeNames(value) {
   return value.filter((item) => typeof item === 'string').map((item) => item.trim()).filter(Boolean).slice(0, 8);
 }
 
+// Interpolates the road's bearing at a point partway along an edge, using
+// the edge's begin/end heading - needed because Valhalla's matched_points
+// give a discrete lat/lon per GPS sample but not a heading, so without this
+// the client has to estimate heading from point-to-point vectors, which is
+// accurate on straight segments but visibly wrong through a curve (the
+// puck's rotation lags/cuts the corner instead of tracking the curve).
+function interpolatedHeading(beginHeading, endHeading, fraction) {
+  if (beginHeading === null || endHeading === null || fraction === null) return beginHeading;
+  let delta = endHeading - beginHeading;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  const heading = beginHeading + delta * Math.max(0, Math.min(1, fraction));
+  return ((heading % 360) + 360) % 360;
+}
+
 function translateValhallaResponse(request, upstream) {
   if (!upstream || typeof upstream !== 'object' || Array.isArray(upstream)) {
     throw new ContractError('upstream response is invalid');
@@ -164,6 +190,21 @@ function translateValhallaResponse(request, upstream) {
   const rawMatched = Array.isArray(upstream.matched_points) ? upstream.matched_points : [];
   const rawEdges = Array.isArray(upstream.edges) ? upstream.edges : [];
 
+  const edges = rawEdges.slice(0, 64).map((raw, edgeIndex) => {
+    const edge = raw && typeof raw === 'object' ? raw : {};
+    const suppliedIndex = optionalFinite(edge.edge_index);
+    return {
+      edgeIndex: suppliedIndex !== null && Number.isInteger(suppliedIndex) ? suppliedIndex : edgeIndex,
+      edgeId: typeof edge.id === 'string' || typeof edge.id === 'number' ? String(edge.id) : null,
+      names: normalizeNames(edge.names),
+      beginHeading: optionalFinite(edge.begin_heading),
+      endHeading: optionalFinite(edge.end_heading),
+      forward: typeof edge.forward === 'boolean' ? edge.forward : null,
+      wayId: typeof edge.way_id === 'string' || typeof edge.way_id === 'number' ? String(edge.way_id) : null,
+      isRoundabout: edge.roundabout === true || edge.use === 'roundabout',
+    };
+  });
+
   const matchedPoints = request.samples.map((sample, index) => {
     const raw = rawMatched[index];
     const rawPoint = raw && typeof raw === 'object' ? raw : {};
@@ -171,7 +212,9 @@ function translateValhallaResponse(request, upstream) {
     const longitude = optionalFinite(rawPoint.lon);
     const edgeIndex = optionalFinite(rawPoint.edge_index);
     const distance = optionalFinite(rawPoint.distance_from_trace_point);
+    const distanceAlongEdge = optionalFinite(rawPoint.distance_along_edge);
     const type = typeof rawPoint.type === 'string' ? rawPoint.type : 'unmatched';
+    const matchedEdge = edgeIndex !== null && Number.isInteger(edgeIndex) ? edges[edgeIndex] : null;
 
     return {
       sampleId: sample.id,
@@ -180,24 +223,20 @@ function translateValhallaResponse(request, upstream) {
       matchType: latitude !== null && longitude !== null ? type : 'unmatched',
       distanceFromRawMeters: distance,
       edgeIndex: edgeIndex !== null && Number.isInteger(edgeIndex) ? edgeIndex : null,
-    };
-  });
-
-  const edges = rawEdges.slice(0, 64).map((raw, edgeIndex) => {
-    const edge = raw && typeof raw === 'object' ? raw : {};
-    const suppliedIndex = optionalFinite(edge.edge_index);
-    return {
-      edgeIndex: suppliedIndex !== null && Number.isInteger(suppliedIndex) ? suppliedIndex : edgeIndex,
-      names: normalizeNames(edge.names),
-      beginHeading: optionalFinite(edge.begin_heading),
-      endHeading: optionalFinite(edge.end_heading),
-      forward: typeof edge.forward === 'boolean' ? edge.forward : null,
-      wayId: typeof edge.way_id === 'string' || typeof edge.way_id === 'number' ? String(edge.way_id) : null,
+      edgeId: matchedEdge ? matchedEdge.edgeId : null,
+      distanceAlongEdge,
+      roadBearingDegrees: matchedEdge
+        ? interpolatedHeading(matchedEdge.beginHeading, matchedEdge.endHeading, distanceAlongEdge)
+        : null,
+      isRoundabout: matchedEdge ? matchedEdge.isRoundabout : false,
     };
   });
 
   const matchedCount = matchedPoints.filter((point) => point.matchType !== 'unmatched').length;
   const status = matchedCount === matchedPoints.length ? 'matched' : matchedCount > 0 ? 'partial' : 'unmatched';
+
+  const roadNames = [...new Set(edges.flatMap((edge) => edge.names))].slice(0, 16);
+  const shape = typeof upstream.shape === 'string' ? upstream.shape : null;
 
   return {
     requestId: request.requestId,
@@ -206,7 +245,11 @@ function translateValhallaResponse(request, upstream) {
     sequenceId: request.sequenceId,
     status,
     matchedPoints,
-    edges,
+    edges: edges.map(({ edgeIndex, edgeId, names, beginHeading, endHeading, forward, wayId, isRoundabout }) => ({
+      edgeIndex, edgeId, names, beginHeading, endHeading, forward, wayId, isRoundabout,
+    })),
+    shape,
+    roadNames,
   };
 }
 

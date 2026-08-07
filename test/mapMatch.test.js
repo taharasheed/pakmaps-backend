@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   ContractError,
+  MAX_SAMPLES,
   validateMapMatchRequest,
   buildValhallaRequest,
   translateValhallaResponse,
@@ -35,10 +36,15 @@ test('validateMapMatchRequest rejects non-auto costing', () => {
   );
 });
 
-test('validateMapMatchRequest rejects fewer than 2 or more than 12 samples', () => {
+test(`validateMapMatchRequest rejects fewer than 2 or more than ${MAX_SAMPLES} samples`, () => {
   assert.throws(() => validateMapMatchRequest({ ...validBody, samples: [validBody.samples[0]] }), ContractError);
-  const tooMany = Array.from({ length: 13 }, (_, i) => ({ ...validBody.samples[0], id: `s${i}`, timestamp: 1000 + i }));
+  const tooMany = Array.from({ length: MAX_SAMPLES + 1 }, (_, i) => ({ ...validBody.samples[0], id: `s${i}`, timestamp: 1000 + i }));
   assert.throws(() => validateMapMatchRequest({ ...validBody, samples: tooMany }), ContractError);
+});
+
+test('validateMapMatchRequest rejects duplicate sample ids', () => {
+  const duplicateSamples = [validBody.samples[0], { ...validBody.samples[1], id: validBody.samples[0].id }];
+  assert.throws(() => validateMapMatchRequest({ ...validBody, samples: duplicateSamples }), ContractError);
 });
 
 test('validateMapMatchRequest rejects non-increasing timestamps', () => {
@@ -83,6 +89,34 @@ test('translateValhallaResponse maps matched Valhalla output to the public contr
   assert.equal(response.matchedPoints.length, 2);
   assert.equal(response.matchedPoints[0].sampleId, 's1');
   assert.deepEqual(response.edges[0].names, ['Main St']);
+});
+
+test('translateValhallaResponse derives road bearing, edgeId, and roundabout flag for curve tracking', () => {
+  const request = validateMapMatchRequest(validBody);
+  const upstream = {
+    shape: 'encoded-polyline-geometry',
+    matched_points: [
+      { lat: 40.7128, lon: -74.006, type: 'matched', edge_index: 0, distance_along_edge: 0, distance_from_trace_point: 0 },
+      { lat: 40.713, lon: -74.0055, type: 'matched', edge_index: 0, distance_along_edge: 0.5, distance_from_trace_point: 0 },
+    ],
+    edges: [
+      { edge_index: 0, names: ['Curve Rd'], begin_heading: 350, end_heading: 20, forward: true, way_id: '123', id: 'edge-abc', roundabout: true },
+    ],
+  };
+  const response = translateValhallaResponse(request, upstream);
+
+  assert.equal(response.shape, 'encoded-polyline-geometry');
+  assert.deepEqual(response.roadNames, ['Curve Rd']);
+  assert.equal(response.edges[0].edgeId, 'edge-abc');
+  assert.equal(response.edges[0].isRoundabout, true);
+
+  // heading interpolated across the shorter arc (350 -> 20 wraps through 0,
+  // not the long way through 180) - at 50% along the edge, expect ~5deg.
+  assert.equal(response.matchedPoints[0].roadBearingDegrees, 350);
+  assert.equal(response.matchedPoints[1].roadBearingDegrees, 5);
+  assert.equal(response.matchedPoints[1].edgeId, 'edge-abc');
+  assert.equal(response.matchedPoints[1].distanceAlongEdge, 0.5);
+  assert.equal(response.matchedPoints[1].isRoundabout, true);
 });
 
 test('translateValhallaResponse reports partial/unmatched status correctly', () => {
