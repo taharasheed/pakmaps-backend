@@ -2,6 +2,7 @@ const router = require('express').Router();
 
 router.use('/auth', require('../modules/auth/auth.routes'));
 router.use('/v1/proxy', require('../modules/proxy/proxy.routes'));
+router.use('/navigation', require('../modules/navigation/navigation.routes'));
 router.use('/', require('../modules/rbac/rbac.routes'));
 router.use('/api-services', require('../modules/apiServices/apiServices.routes'));
 router.use('/dashboard', require('../modules/dashboard/dashboard.routes'));

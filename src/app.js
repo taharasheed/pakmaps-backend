@@ -36,7 +36,11 @@ app.use(
   pinoHttp({
     logger,
     genReqId: (req) => req.id,
-    autoLogging: { ignore: (req) => req.url === '/health' },
+    // /navigation/map-match handles its own metadata-only logging (no
+    // coordinates/bodies/tokens ever, per its privacy requirements) -
+    // excluded from the default request/response auto-logger the same way
+    // /health already is.
+    autoLogging: { ignore: (req) => req.url === '/health' || req.url === '/api/navigation/map-match' },
   })
 );
 
