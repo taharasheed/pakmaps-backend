@@ -72,7 +72,7 @@ function handleProxyRequest(handlerKeyOverride) {
 
     try {
       output = await withConcurrencyLimit(slug, service.concurrencyLimit, async () => {
-        const upstreamReq = adapter.buildUpstreamRequest(input, service);
+        const upstreamReq = adapter.buildUpstreamRequest(input, service, req);
         const upstreamRes = await upstreamFetch(upstreamReq.url, {
           method: upstreamReq.method,
           headers: upstreamReq.headers,

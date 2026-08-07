@@ -29,12 +29,16 @@ services:
       timeout: 5s
       retries: 10
   backend:
+    image: mapifyit-geo-platform-backend:v10.17-production-20260806
     build: .
     restart: unless-stopped
     env_file: .env
     environment:
       DB_HOST: postgres
       REDIS_HOST: redis
+      MAPIFY_V10_INTERNAL_TOKEN_FILE: /run/secrets/mapify-v10-api-token
+    volumes:
+      - /etc/mapify-v10/mapify-api.token:/run/secrets/mapify-v10-api-token:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -44,6 +48,11 @@ services:
         condition: service_healthy
     ports:
       - '127.0.0.1:5000:5000'
+    networks:
+      default: {}
+      v10-mapping-edge:
+        aliases:
+          - mapify-mapping-api
   admin-panel:
     build:
       context: ../mapifyit-admin-panel
@@ -57,3 +66,8 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  v10-mapping-edge:
+    external: true
+    name: mapify-v10-mapping-edge

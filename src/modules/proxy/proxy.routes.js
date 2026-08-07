@@ -1,12 +1,12 @@
 const router = require('express').Router();
-const { authMiddleware } = require('../../middleware/auth.middleware');
+const { proxyAuthMiddleware } = require('./proxyAuth.middleware');
 const { handleProxyRequest } = require('./gateway');
 const { getServiceBySlug } = require('./registry');
 const asyncHandler = require('../../utils/asyncHandler');
 const AppError = require('../../utils/AppError');
 const { TILE_STYLES } = require('./adapters/tiles.adapter');
 
-router.use(authMiddleware);
+router.use(proxyAuthMiddleware);
 
 // Style descriptor for a theme - single JSON fetch per map load, mirrors how
 // providers like MapTiler/Mapbox expose a style.json separately from the
@@ -43,7 +43,7 @@ router.get('/tiles/:style', asyncHandler(async (req, res) => {
 }));
 
 router.get('/tiles/:style/:z/:x/:y', handleProxyRequest('tiles'));
-router.get('/geocoding', handleProxyRequest('geocoding'));
+router.get('/autocomplete', handleProxyRequest('autocomplete'));
 router.get('/search', handleProxyRequest('search'));
 router.get('/reverse_geocoding', handleProxyRequest('reverse_geocoding'));
 router.post('/routing', handleProxyRequest('routing'));

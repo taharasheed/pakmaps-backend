@@ -3,7 +3,7 @@ const { normalizeFeatureCollection } = require('./peliasNormalize');
 
 // Triggered explicitly (button click / Enter), not on every keystroke - hits
 // the upstream's full search endpoint rather than autocomplete, so results
-// can be more thorough/authoritative than geocoding.adapter.js's live-typing results.
+// can be more thorough/authoritative than autocomplete.adapter.js's live-typing results.
 const querySchema = z.object({
   q: z.string().min(1).max(200),
   lat: z.coerce.number().min(-90).max(90).optional(),
@@ -18,7 +18,7 @@ function parseInput(req) {
   return querySchema.parse(req.query);
 }
 
-function buildUpstreamRequest(input, service) {
+function buildUpstreamRequest(input, service, req) {
   const params = new URLSearchParams();
   params.set('text', input.q);
   if (input.lat !== undefined) params.set('focus.point.lat', String(input.lat));
@@ -26,7 +26,21 @@ function buildUpstreamRequest(input, service) {
   if (input.boundary_country) params.set('boundary.country', input.boundary_country);
   params.set('size', String(input.size));
 
-  return { method: 'GET', url: `${service.baseUrl}/v1/search?${params.toString()}` };
+  return {
+    method: 'GET',
+    url: `${service.baseUrl}/v10/search?${params.toString()}`,
+    headers: mapifyUpstreamHeaders(req),
+  };
+}
+
+function mapifyUpstreamHeaders(req) {
+  return {
+    accept: 'application/json',
+    'x-authenticated-user': String(req?.user?.id || 'authenticated-user'),
+    ...(req?.headers?.['accept-language']
+      ? { 'accept-language': String(req.headers['accept-language']).slice(0, 128) }
+      : {}),
+  };
 }
 
 function normalizeResponse(upstreamJson) {

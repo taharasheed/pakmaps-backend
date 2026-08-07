@@ -7,7 +7,7 @@ const DEM_BASE = process.env.DEM_BASE_URL || '';
 
 const SERVICES = [
   { slug: 'tiles', name: 'Map Tiles', handlerKey: 'tiles', baseUrl: TILE_BASE, cacheable: true, cacheTtlSeconds: 21600, concurrencyLimit: 100 },
-  { slug: 'geocoding', name: 'Geocoding (autocomplete)', handlerKey: 'geocoding', baseUrl: GEOCODER_BASE, cacheable: true, cacheTtlSeconds: 300, concurrencyLimit: 60 },
+  { slug: 'autocomplete', name: 'Autocomplete', handlerKey: 'autocomplete', baseUrl: GEOCODER_BASE, cacheable: true, cacheTtlSeconds: 300, concurrencyLimit: 60 },
   { slug: 'search', name: 'Search', handlerKey: 'search', baseUrl: GEOCODER_BASE, cacheable: true, cacheTtlSeconds: 300, concurrencyLimit: 60 },
   { slug: 'reverse_geocoding', name: 'Reverse Geocoding', handlerKey: 'reverseGeocoding', baseUrl: GEOCODER_BASE, cacheable: true, cacheTtlSeconds: 300, concurrencyLimit: 60 },
   { slug: 'routing', name: 'Routing', handlerKey: 'routing', baseUrl: ROUTING_BASE, cacheable: true, cacheTtlSeconds: 60, concurrencyLimit: 40 },

@@ -34,6 +34,11 @@ const schema = z.object({
   GEOCODER_BASE_URL: z.string().default(''),
   ROUTING_BASE_URL: z.string().default(''),
   DEM_BASE_URL: z.string().default(''),
+  MAPIFY_V10_INTERNAL_TOKEN: z.string().default('').refine(
+    (value) => value === '' || value.length >= 32,
+    'MAPIFY_V10_INTERNAL_TOKEN must be empty or at least 32 characters'
+  ),
+  MAPIFY_V10_INTERNAL_TOKEN_FILE: z.string().default(''),
 });
 
 const parsed = schema.safeParse(process.env);
