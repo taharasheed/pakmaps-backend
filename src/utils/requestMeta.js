@@ -14,4 +14,16 @@ function getDeviceInfo(req) {
   };
 }
 
-module.exports = { getClientIp, getDeviceInfo };
+// Optional, best-effort location for any request - mobile and web alike.
+// Sent as headers (not query/body) so it applies uniformly across GET and
+// POST endpoints without touching every adapter's own validation schema.
+// Never throws: a missing or malformed header just means no location, not
+// a failed request.
+function getClientLocation(req) {
+  const lat = Number(req.headers['x-client-lat']);
+  const lon = Number(req.headers['x-client-lon']);
+  const valid = Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+  return valid ? { lat, lon } : { lat: null, lon: null };
+}
+
+module.exports = { getClientIp, getDeviceInfo, getClientLocation };

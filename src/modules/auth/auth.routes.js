@@ -1,9 +1,10 @@
 const router = require('express').Router();
 const validate = require('../../middleware/validate');
 const { authMiddleware } = require('../../middleware/auth.middleware');
-const { loginSchema, changePasswordSchema } = require('./auth.validation');
+const { loginSchema, signupSchema, changePasswordSchema } = require('./auth.validation');
 const controller = require('./auth.controller');
 
+router.post('/signup', validate(signupSchema), controller.signup);
 router.post('/login', validate(loginSchema), controller.login);
 router.post('/logout', authMiddleware, controller.logout);
 router.get('/me', authMiddleware, controller.me);

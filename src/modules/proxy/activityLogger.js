@@ -33,6 +33,8 @@ async function flushActivityLogs() {
           cacheHit: !!parsed.cacheHit,
           ipAddress: parsed.ipAddress || null,
           deviceInfo: parsed.deviceInfo || null,
+          lat: parsed.lat ?? null,
+          lon: parsed.lon ?? null,
           createdAt: parsed.createdAt,
         };
       } catch {

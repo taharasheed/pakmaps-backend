@@ -12,6 +12,8 @@ module.exports = (sequelize, DataTypes) => {
       source: { type: DataTypes.ENUM('web', 'mobile'), allowNull: false, defaultValue: 'web' },
       ipAddress: { type: DataTypes.STRING(64), allowNull: true },
       userAgent: { type: DataTypes.STRING(500), allowNull: true },
+      lat: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
+      lon: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
       changes: { type: DataTypes.JSONB, allowNull: true },
       statusCode: { type: DataTypes.INTEGER, allowNull: true },
     },

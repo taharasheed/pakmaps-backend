@@ -67,7 +67,7 @@ const updateRole = asyncHandler(async (req, res) => {
 const deleteRole = asyncHandler(async (req, res) => {
   const role = await Role.findByPk(req.params.id, { include: [{ model: User, as: 'users', attributes: ['id'] }] });
   if (!role) throw new AppError('Role not found.', 404);
-  if (role.isSystem) throw new AppError('The Super Admin role cannot be deleted.', 400);
+  if (role.isSystem) throw new AppError('System roles cannot be deleted.', 400);
   if (role.users?.length) throw new AppError('Cannot delete a role that still has users assigned to it.', 400);
 
   await role.destroy();

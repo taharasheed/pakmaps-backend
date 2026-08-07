@@ -8,6 +8,8 @@ module.exports = (sequelize, DataTypes) => {
       deviceInfo: { type: DataTypes.JSONB, allowNull: true },
       ipAddress: { type: DataTypes.STRING(64), allowNull: true },
       location: { type: DataTypes.STRING(200), allowNull: true },
+      lat: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
+      lon: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
       lastActive: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
       expiresAt: { type: DataTypes.DATE, allowNull: false },
     },

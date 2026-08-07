@@ -8,10 +8,11 @@ const { withConcurrencyLimit } = require('./concurrencyPool');
 const { upstreamFetch } = require('./httpClient');
 const { recordUsage } = require('./usageBuffer');
 const { logActivity } = require('./activityLogger');
-const { getClientIp, getDeviceInfo } = require('../../utils/requestMeta');
+const { getClientIp, getDeviceInfo, getClientLocation } = require('../../utils/requestMeta');
 
 function afterResponse({ req, slug, status, statusCode, latencyMs, cacheHit, input, output, adapter }) {
   recordUsage(slug, { success: status === 'success', cacheHit, latencyMs }).catch(() => {});
+  const { lat, lon } = getClientLocation(req);
   logActivity({
     userId: req.user?.id || null,
     serviceSlug: slug,
@@ -24,6 +25,8 @@ function afterResponse({ req, slug, status, statusCode, latencyMs, cacheHit, inp
     cacheHit,
     ipAddress: getClientIp(req),
     deviceInfo: getDeviceInfo(req),
+    lat,
+    lon,
   }).catch(() => {});
 }
 

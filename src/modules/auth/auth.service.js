@@ -1,8 +1,9 @@
 const bcrypt = require('bcrypt');
 const { User, Role, Permission, Page, Session } = require('../../db/models');
 const AppError = require('../../utils/AppError');
+const env = require('../../config/env');
 const { signToken } = require('../../utils/jwt');
-const { getClientIp, getDeviceInfo } = require('../../utils/requestMeta');
+const { getClientIp, getDeviceInfo, getClientLocation } = require('../../utils/requestMeta');
 
 const roleIncludeWithPermissions = {
   model: Role,
@@ -29,14 +30,37 @@ async function authenticateCredentials(email, password, clientType) {
   return user;
 }
 
-async function createSessionAndToken(user, clientType, req) {
+async function registerMobileUser({ name, email, phone, gender, password }) {
+  const existingEmail = await User.findOne({ where: { email } });
+  if (existingEmail) throw new AppError('An account with this email already exists.', 409);
+
+  const existingPhone = await User.findOne({ where: { phone } });
+  if (existingPhone) throw new AppError('An account with this phone number already exists.', 409);
+
+  const role = await Role.findOne({ where: { name: 'Mobile User' } });
+  if (!role) throw new AppError('Sign up is not available right now.', 500);
+
+  const passwordHash = await bcrypt.hash(password, env.BCRYPT_SALT_ROUNDS);
+  await User.create({ name, email, phone, gender, passwordHash, roleId: role.id });
+
+  return findUserWithRole(email);
+}
+
+// deviceMeta is whatever the client optionally sent (deviceId/platform/model/
+// brand/appVersion) - merged alongside the User-Agent-derived browser/os info
+// rather than replacing it, since one comes from the client and one from the
+// request itself.
+async function createSessionAndToken(user, clientType, req, deviceMeta = {}) {
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * (clientType === 'mobile' ? 30 : 7));
+  const { lat, lon } = getClientLocation(req);
 
   const session = await Session.create({
     userId: user.id,
     clientType,
-    deviceInfo: getDeviceInfo(req),
+    deviceInfo: { ...getDeviceInfo(req), ...deviceMeta },
     ipAddress: getClientIp(req),
+    lat,
+    lon,
     lastActive: new Date(),
     expiresAt,
   });
@@ -56,6 +80,8 @@ function serializeUser(user) {
     id: plain.id,
     name: plain.name,
     email: plain.email,
+    phone: plain.phone,
+    gender: plain.gender,
     isActive: plain.isActive,
     lastLoginAt: plain.lastLoginAt,
     role: plain.role
@@ -72,6 +98,7 @@ function serializeUser(user) {
 module.exports = {
   findUserWithRole,
   authenticateCredentials,
+  registerMobileUser,
   createSessionAndToken,
   serializeUser,
   roleIncludeWithPermissions,

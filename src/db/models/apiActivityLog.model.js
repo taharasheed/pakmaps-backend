@@ -14,6 +14,8 @@ module.exports = (sequelize, DataTypes) => {
       cacheHit: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
       ipAddress: { type: DataTypes.STRING(64), allowNull: true },
       deviceInfo: { type: DataTypes.JSONB, allowNull: true },
+      lat: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
+      lon: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
     },
     {
       tableName: 'api_activity_logs',

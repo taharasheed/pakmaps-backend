@@ -5,6 +5,8 @@ module.exports = (sequelize, DataTypes) => {
       id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
       name: { type: DataTypes.STRING(150), allowNull: false },
       email: { type: DataTypes.STRING(200), allowNull: false, unique: true, validate: { isEmail: true } },
+      phone: { type: DataTypes.STRING(30), allowNull: true, unique: true },
+      gender: { type: DataTypes.STRING(30), allowNull: true },
       passwordHash: { type: DataTypes.STRING(200), allowNull: false },
       roleId: { type: DataTypes.UUID, allowNull: false },
       isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },

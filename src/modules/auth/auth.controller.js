@@ -1,12 +1,18 @@
 const bcrypt = require('bcrypt');
 const { Op } = require('sequelize');
 const asyncHandler = require('../../utils/asyncHandler');
-const { ok } = require('../../utils/apiResponse');
+const { ok, created } = require('../../utils/apiResponse');
 const AppError = require('../../utils/AppError');
 const env = require('../../config/env');
 const { Session } = require('../../db/models');
 const { recordAudit } = require('../audit/audit.service');
-const { authenticateCredentials, createSessionAndToken, serializeUser, findUserWithRole } = require('./auth.service');
+const {
+  authenticateCredentials,
+  registerMobileUser,
+  createSessionAndToken,
+  serializeUser,
+  findUserWithRole,
+} = require('./auth.service');
 
 function cookieOptions() {
   return {
@@ -17,10 +23,25 @@ function cookieOptions() {
   };
 }
 
+function pickDeviceMeta(body) {
+  const { deviceId, platform, model, brand, appVersion } = body;
+  return { deviceId, platform, model, brand, appVersion };
+}
+
+const signup = asyncHandler(async (req, res) => {
+  const { name, email, phone, gender, password } = req.body;
+  const user = await registerMobileUser({ name, email, phone, gender, password });
+  const { session, token } = await createSessionAndToken(user, 'mobile', req, pickDeviceMeta(req.body));
+
+  await recordAudit({ req, user, action: 'signup', entityType: 'session', entityId: session.id, source: 'mobile' });
+
+  return created(res, { token, user: serializeUser(user) }, 'Account created.');
+});
+
 const login = asyncHandler(async (req, res) => {
   const { email, password, clientType } = req.body;
   const user = await authenticateCredentials(email, password, clientType);
-  const { session, token } = await createSessionAndToken(user, clientType, req);
+  const { session, token } = await createSessionAndToken(user, clientType, req, pickDeviceMeta(req.body));
 
   await user.update({ lastLoginAt: new Date() });
   await recordAudit({ req, user, action: 'login', entityType: 'session', entityId: session.id, source: clientType });
@@ -84,4 +105,4 @@ const revokeOtherSessions = asyncHandler(async (req, res) => {
   return ok(res, null, 'All other sessions logged out.');
 });
 
-module.exports = { login, logout, me, changePassword, listSessions, revokeSession, revokeOtherSessions };
+module.exports = { signup, login, logout, me, changePassword, listSessions, revokeSession, revokeOtherSessions };
