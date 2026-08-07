@@ -3,7 +3,6 @@ const { v4: uuidv4 } = require('uuid');
 const TILE_BASE = process.env.TILE_SERVER_BASE_URL || '';
 const GEOCODER_BASE = process.env.GEOCODER_BASE_URL || '';
 const ROUTING_BASE = process.env.ROUTING_BASE_URL || '';
-const DEM_BASE = process.env.DEM_BASE_URL || '';
 
 const SERVICES = [
   { slug: 'tiles', name: 'Map Tiles', handlerKey: 'tiles', baseUrl: TILE_BASE, cacheable: true, cacheTtlSeconds: 21600, concurrencyLimit: 100 },
@@ -11,8 +10,6 @@ const SERVICES = [
   { slug: 'search', name: 'Search', handlerKey: 'search', baseUrl: GEOCODER_BASE, cacheable: true, cacheTtlSeconds: 300, concurrencyLimit: 60 },
   { slug: 'reverse_geocoding', name: 'Reverse Geocoding', handlerKey: 'reverseGeocoding', baseUrl: GEOCODER_BASE, cacheable: true, cacheTtlSeconds: 300, concurrencyLimit: 60 },
   { slug: 'routing', name: 'Routing', handlerKey: 'routing', baseUrl: ROUTING_BASE, cacheable: true, cacheTtlSeconds: 60, concurrencyLimit: 40 },
-  { slug: 'isochrone', name: 'Isochrone', handlerKey: 'isochrone', baseUrl: ROUTING_BASE, cacheable: true, cacheTtlSeconds: 120, concurrencyLimit: 30 },
-  { slug: 'dem', name: 'Elevation (DEM)', handlerKey: 'dem', baseUrl: DEM_BASE, cacheable: true, cacheTtlSeconds: 86400, concurrencyLimit: 40 },
 ];
 
 module.exports = {

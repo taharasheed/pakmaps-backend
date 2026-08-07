@@ -1,6 +1,6 @@
 # Pak Maps Backend
 
-Node.js/Express API that serves the Pak Maps admin panel and the mobile app: auth + RBAC, audit/activity logging, and a caching/queueing/rate-limited gateway in front of the map/geo upstream services (tiles, geocoding, search, reverse geocoding, routing, isochrone, DEM).
+Node.js/Express API that serves the Pak Maps admin panel and the mobile app: auth + RBAC, audit/activity logging, and a caching/queueing/rate-limited gateway in front of the map/geo upstream services (tiles, autocomplete, search, reverse geocoding, routing).
 
 ## Stack
 
