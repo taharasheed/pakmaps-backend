@@ -15,7 +15,7 @@ const paramsSchema = z.object({
 const isBinary = true;
 
 function parseInput(req) {
-  return paramsSchema.parse({ style: req.params.style, z: req.query.z, x: req.query.x, y: req.query.y });
+  return paramsSchema.parse(req.params);
 }
 
 function buildUpstreamRequest(input, service) {
