@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const validate = require('../../middleware/validate');
 const { authMiddleware } = require('../../middleware/auth.middleware');
-const { loginSchema, signupSchema, changePasswordSchema } = require('./auth.validation');
+const { loginSchema, signupSchema, changePasswordSchema, listSessionsSchema } = require('./auth.validation');
 const controller = require('./auth.controller');
 
 router.post('/signup', validate(signupSchema), controller.signup);
@@ -9,7 +9,7 @@ router.post('/login', validate(loginSchema), controller.login);
 router.post('/logout', authMiddleware, controller.logout);
 router.get('/me', authMiddleware, controller.me);
 router.patch('/password', authMiddleware, validate(changePasswordSchema), controller.changePassword);
-router.get('/sessions', authMiddleware, controller.listSessions);
+router.get('/sessions', authMiddleware, validate(listSessionsSchema), controller.listSessions);
 router.delete('/sessions/other', authMiddleware, controller.revokeOtherSessions);
 router.delete('/sessions/:id', authMiddleware, controller.revokeSession);
 

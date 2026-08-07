@@ -82,12 +82,15 @@ const changePassword = asyncHandler(async (req, res) => {
 });
 
 const listSessions = asyncHandler(async (req, res) => {
-  const sessions = await Session.findAll({
+  const { page, pageSize } = req.query;
+  const { rows, count } = await Session.findAndCountAll({
     where: { userId: req.user.id },
     order: [['lastActive', 'DESC']],
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
   });
-  const data = sessions.map((s) => ({ ...s.toJSON(), isCurrent: s.id === req.auth.sessionId }));
-  return ok(res, data);
+  const data = rows.map((s) => ({ ...s.toJSON(), isCurrent: s.id === req.auth.sessionId }));
+  return ok(res, { rows: data, page, pageSize, total: count, totalPages: Math.ceil(count / pageSize) });
 });
 
 const revokeSession = asyncHandler(async (req, res) => {

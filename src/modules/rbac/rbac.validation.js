@@ -28,6 +28,8 @@ const createUserSchema = z.object({
   body: z.object({
     name: z.string().min(2).max(150),
     email: z.string().email(),
+    phone: z.string().regex(/^\+?[0-9]{7,15}$/, 'Enter a valid phone number.').optional().nullable(),
+    gender: z.enum(['male', 'female', 'other']).optional().nullable(),
     password: z.string().min(8),
     roleId: z.string().uuid(),
   }),
@@ -39,6 +41,8 @@ const updateUserSchema = z.object({
   body: z.object({
     name: z.string().min(2).max(150).optional(),
     email: z.string().email().optional(),
+    phone: z.string().regex(/^\+?[0-9]{7,15}$/, 'Enter a valid phone number.').optional().nullable(),
+    gender: z.enum(['male', 'female', 'other']).optional().nullable(),
     roleId: z.string().uuid().optional(),
     isActive: z.boolean().optional(),
   }),

@@ -21,18 +21,23 @@ const getUser = asyncHandler(async (req, res) => {
 });
 
 const createUser = asyncHandler(async (req, res) => {
-  const { name, email, password, roleId } = req.body;
+  const { name, email, phone, gender, password, roleId } = req.body;
 
   const existing = await User.findOne({ where: { email } });
   if (existing) throw new AppError('A user with this email already exists.', 409);
+
+  if (phone) {
+    const existingPhone = await User.findOne({ where: { phone } });
+    if (existingPhone) throw new AppError('A user with this phone number already exists.', 409);
+  }
 
   const role = await Role.findByPk(roleId);
   if (!role) throw new AppError('Selected role does not exist.', 400);
 
   const passwordHash = await bcrypt.hash(password, env.BCRYPT_SALT_ROUNDS);
-  const user = await User.create({ name, email, passwordHash, roleId });
+  const user = await User.create({ name, email, phone, gender, passwordHash, roleId });
 
-  await recordAudit({ req, user: req.user, action: 'create', entityType: 'user', entityId: user.id, changes: { name, email, roleId } });
+  await recordAudit({ req, user: req.user, action: 'create', entityType: 'user', entityId: user.id, changes: { name, email, phone, gender, roleId } });
   return created(res, user, 'User created.');
 });
 
@@ -43,6 +48,11 @@ const updateUser = asyncHandler(async (req, res) => {
   if (req.body.email && req.body.email !== user.email) {
     const existing = await User.findOne({ where: { email: req.body.email } });
     if (existing) throw new AppError('A user with this email already exists.', 409);
+  }
+
+  if (req.body.phone && req.body.phone !== user.phone) {
+    const existingPhone = await User.findOne({ where: { phone: req.body.phone } });
+    if (existingPhone) throw new AppError('A user with this phone number already exists.', 409);
   }
 
   if (user.id === req.user.id && req.body.isActive === false) {

@@ -48,4 +48,13 @@ const changePasswordSchema = z.object({
   params: z.any().optional(),
 });
 
-module.exports = { loginSchema, signupSchema, changePasswordSchema };
+const listSessionsSchema = z.object({
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(10),
+  }),
+  body: z.any().optional(),
+  params: z.any().optional(),
+});
+
+module.exports = { loginSchema, signupSchema, changePasswordSchema, listSessionsSchema };
