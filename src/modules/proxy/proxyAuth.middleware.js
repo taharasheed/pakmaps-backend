@@ -1,16 +1,9 @@
-const crypto = require('crypto');
 const fs = require('fs');
 const env = require('../../config/env');
 const { authMiddleware } = require('../../middleware/auth.middleware');
+const { constantTimeEqual } = require('../../utils/crypto');
 
 let fileToken;
-
-function constantTimeEqual(left, right) {
-  const leftBuffer = Buffer.from(String(left || ''));
-  const rightBuffer = Buffer.from(String(right || ''));
-  if (leftBuffer.length !== rightBuffer.length) return false;
-  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
-}
 
 function proxyAuthMiddleware(req, res, next) {
   const authorization = String(req.headers.authorization || '');

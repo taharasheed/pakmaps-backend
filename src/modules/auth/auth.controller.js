@@ -10,17 +10,60 @@ const {
   authenticateCredentials,
   registerMobileUser,
   createSessionAndToken,
+  rotateSession,
   serializeUser,
   findUserWithRole,
 } = require('./auth.service');
 
-function cookieOptions() {
+// The refresh token gets its own cookie, scoped to only the one route that
+// ever reads it - the browser then never sends it on ordinary API calls,
+// which is the actual point of splitting it out from the access token (see
+// ACCESS_TOKEN_TTL's comment in config/env.js).
+const REFRESH_COOKIE_NAME = `${env.COOKIE_NAME}_rt`;
+const REFRESH_COOKIE_PATH = '/api/auth/refresh';
+// Soft/approximate match for the access token's lifetime - not the real
+// enforcement (the JWT's own exp claim is), just tidiness so the browser
+// doesn't hold onto a dead cookie longer than it has to.
+const ACCESS_COOKIE_MAX_AGE_MS = 1000 * 60 * 15;
+const REFRESH_COOKIE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * env.REFRESH_TOKEN_TTL_DAYS;
+
+function baseCookieOptions() {
   return {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
     sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 1000 * 60 * 60 * 24 * 7,
   };
+}
+
+function accessCookieOptions() {
+  return { ...baseCookieOptions(), maxAge: ACCESS_COOKIE_MAX_AGE_MS };
+}
+
+function refreshCookieOptions() {
+  return { ...baseCookieOptions(), path: REFRESH_COOKIE_PATH, maxAge: REFRESH_COOKIE_MAX_AGE_MS };
+}
+
+function setAuthCookies(res, accessToken, refreshToken) {
+  res.cookie(env.COOKIE_NAME, accessToken, accessCookieOptions());
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions());
+}
+
+function clearAuthCookies(res) {
+  res.clearCookie(env.COOKIE_NAME);
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
+}
+
+// Web gets tokens purely via httpOnly cookies - handing the raw refresh
+// token back in a JS-readable response body would defeat the point of
+// httpOnly. Mobile has no cookie jar, so it gets both tokens in the body and
+// is responsible for storing them itself (see the integration guide).
+function tokenResponseData(clientType, user, accessToken, refreshToken) {
+  const data = { user: serializeUser(user) };
+  if (clientType === 'mobile') {
+    data.accessToken = accessToken;
+    data.refreshToken = refreshToken;
+  }
+  return data;
 }
 
 function pickDeviceMeta(body) {
@@ -31,26 +74,43 @@ function pickDeviceMeta(body) {
 const signup = asyncHandler(async (req, res) => {
   const { name, email, phone, gender, password } = req.body;
   const user = await registerMobileUser({ name, email, phone, gender, password });
-  const { session, token } = await createSessionAndToken(user, 'mobile', req, pickDeviceMeta(req.body));
+  const { session, accessToken, refreshToken } = await createSessionAndToken(user, 'mobile', req, pickDeviceMeta(req.body));
 
   await recordAudit({ req, user, action: 'signup', entityType: 'session', entityId: session.id, source: 'mobile' });
 
-  return created(res, { token, user: serializeUser(user) }, 'Account created.');
+  return created(res, tokenResponseData('mobile', user, accessToken, refreshToken), 'Account created.');
 });
 
 const login = asyncHandler(async (req, res) => {
   const { email, password, clientType } = req.body;
   const user = await authenticateCredentials(email, password, clientType);
-  const { session, token } = await createSessionAndToken(user, clientType, req, pickDeviceMeta(req.body));
+  const { session, accessToken, refreshToken } = await createSessionAndToken(user, clientType, req, pickDeviceMeta(req.body));
 
   await user.update({ lastLoginAt: new Date() });
   await recordAudit({ req, user, action: 'login', entityType: 'session', entityId: session.id, source: clientType });
 
   if (clientType === 'web') {
-    res.cookie(env.COOKIE_NAME, token, cookieOptions());
+    setAuthCookies(res, accessToken, refreshToken);
   }
 
-  return ok(res, { token, user: serializeUser(user) }, 'Logged in successfully.');
+  return ok(res, tokenResponseData(clientType, user, accessToken, refreshToken), 'Logged in successfully.');
+});
+
+// Public - the access token is presumably already expired, that's the whole
+// reason this is being called. Web reads the path-scoped refresh cookie;
+// mobile sends the refresh token in the body.
+const refresh = asyncHandler(async (req, res) => {
+  const rawRefreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
+  if (!rawRefreshToken) throw new AppError('Refresh token is required.', 401);
+
+  const { session, user, accessToken, refreshToken } = await rotateSession(rawRefreshToken, req);
+
+  if (session.clientType === 'web') {
+    setAuthCookies(res, accessToken, refreshToken);
+    return ok(res, null, 'Session refreshed.');
+  }
+
+  return ok(res, { accessToken, refreshToken }, 'Session refreshed.');
 });
 
 const logout = asyncHandler(async (req, res) => {
@@ -58,7 +118,7 @@ const logout = asyncHandler(async (req, res) => {
     await Session.destroy({ where: { id: req.auth.sessionId } });
   }
   await recordAudit({ req, user: req.user, action: 'logout', entityType: 'session', entityId: req.auth?.sessionId });
-  res.clearCookie(env.COOKIE_NAME);
+  clearAuthCookies(res);
   return ok(res, null, 'Logged out.');
 });
 
@@ -108,4 +168,4 @@ const revokeOtherSessions = asyncHandler(async (req, res) => {
   return ok(res, null, 'All other sessions logged out.');
 });
 
-module.exports = { signup, login, logout, me, changePassword, listSessions, revokeSession, revokeOtherSessions };
+module.exports = { signup, login, refresh, logout, me, changePassword, listSessions, revokeSession, revokeOtherSessions };

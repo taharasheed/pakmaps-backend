@@ -48,6 +48,16 @@ const changePasswordSchema = z.object({
   params: z.any().optional(),
 });
 
+const refreshSchema = z.object({
+  // Web doesn't send this - the refresh token comes from its own path-scoped
+  // cookie instead (see auth.controller.js). Mobile sends it explicitly.
+  body: z.object({
+    refreshToken: z.string().min(1).optional(),
+  }),
+  query: z.any().optional(),
+  params: z.any().optional(),
+});
+
 const listSessionsSchema = z.object({
   query: z.object({
     page: z.coerce.number().int().min(1).default(1),
@@ -57,4 +67,4 @@ const listSessionsSchema = z.object({
   params: z.any().optional(),
 });
 
-module.exports = { loginSchema, signupSchema, changePasswordSchema, listSessionsSchema };
+module.exports = { loginSchema, signupSchema, changePasswordSchema, refreshSchema, listSessionsSchema };

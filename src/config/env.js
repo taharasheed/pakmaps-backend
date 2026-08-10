@@ -19,8 +19,13 @@ const schema = z.object({
   REDIS_PASSWORD: z.string().optional().default(''),
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
-  JWT_EXPIRES_IN_WEB: z.string().default('7d'),
-  JWT_EXPIRES_IN_MOBILE: z.string().default('30d'),
+  // Short-lived on purpose: this is the token sent on every request, so it's
+  // the one most likely to end up somewhere it shouldn't (logs, proxies,
+  // crash reports). Staying signed in for months/years comes from
+  // REFRESH_TOKEN_TTL_DAYS below instead - a long-lived, rotating token used
+  // only to silently mint new access tokens, never sent on ordinary calls.
+  ACCESS_TOKEN_TTL: z.string().default('15m'),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(90),
   COOKIE_NAME: z.string().default('pakmaps_jwt'),
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
 

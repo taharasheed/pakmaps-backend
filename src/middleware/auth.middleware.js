@@ -27,7 +27,11 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
 
   if (payload.sessionId) {
     const session = await Session.findByPk(payload.sessionId);
-    if (!session || session.expiresAt < new Date()) {
+    // A session with no refreshTokenHash predates the access/refresh token
+    // split (it was issued back when a single token never expired) and never
+    // got a refresh token of its own - reject it so it falls through to a
+    // real re-login instead of being silently grandfathered in forever.
+    if (!session || session.expiresAt < new Date() || !session.refreshTokenHash) {
       throw new AppError('Session has been revoked. Please log in again.', 401);
     }
     const lastTouch = lastActiveTouch.get(session.id) || 0;

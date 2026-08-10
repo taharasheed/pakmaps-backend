@@ -1,9 +1,13 @@
 const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 
-function signToken(payload, clientType) {
-  const expiresIn = clientType === 'mobile' ? env.JWT_EXPIRES_IN_MOBILE : env.JWT_EXPIRES_IN_WEB;
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn });
+// Short-lived by design - this is the access token, sent on every request.
+// Staying logged in "forever" is handled by the separate, rotating refresh
+// token (see utils/refreshToken.js + auth.service.js's rotateSession), not by
+// making this one live forever - see the comment on ACCESS_TOKEN_TTL in
+// config/env.js for why.
+function signToken(payload) {
+  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.ACCESS_TOKEN_TTL });
 }
 
 function verifyToken(token) {
