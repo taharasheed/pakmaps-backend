@@ -24,7 +24,11 @@ function afterResponse({ req, slug, status, statusCode, latencyMs, cacheHit, inp
     latencyMs,
     cacheHit,
     ipAddress: getClientIp(req),
-    deviceInfo: getDeviceInfo(req),
+    // The session (if any) already has the mobile app's self-reported device
+    // meta from login - far more useful than re-parsing this one request's
+    // User-Agent, which for a native app's HTTP client rarely identifies
+    // anything. Only fall back to that for calls with no session at all.
+    deviceInfo: req.auth?.deviceInfo || getDeviceInfo(req),
     lat,
     lon,
   }).catch(() => {});
@@ -54,13 +58,15 @@ function handleProxyRequest(handlerKeyOverride) {
     });
 
     const input = adapter.parseInput(req);
+    const startedAt = Date.now();
 
     let cacheKey = null;
     if (service.cacheable && adapter.cacheKeyParts) {
       cacheKey = buildCacheKey(slug, adapter.cacheKeyParts(input));
       const cached = await getCached(cacheKey);
       if (cached) {
-        afterResponse({ req, slug, status: 'success', statusCode: 200, latencyMs: 0, cacheHit: true, input, output: cached, adapter });
+        const cacheLatencyMs = Date.now() - startedAt;
+        afterResponse({ req, slug, status: 'success', statusCode: 200, latencyMs: cacheLatencyMs, cacheHit: true, input, output: cached, adapter });
         if (adapter.isBinary) {
           res.setHeader('Content-Type', cached.contentType || 'application/octet-stream');
           return res.status(200).send(Buffer.from(cached.body, 'base64'));
@@ -69,7 +75,6 @@ function handleProxyRequest(handlerKeyOverride) {
       }
     }
 
-    const startedAt = Date.now();
     let statusCode = 200;
     let output;
 

@@ -50,10 +50,16 @@ const changePasswordSchema = z.object({
 
 const refreshSchema = z.object({
   // Web doesn't send this - the refresh token comes from its own path-scoped
-  // cookie instead (see auth.controller.js). Mobile sends it explicitly.
-  body: z.object({
-    refreshToken: z.string().min(1).optional(),
-  }),
+  // cookie instead (see auth.controller.js), and sends no body/Content-Type
+  // at all on this call, so req.body arrives as undefined, not {} - body
+  // itself has to tolerate being absent, not just the field inside it.
+  // Mobile sends a real body with refreshToken set.
+  body: z
+    .object({
+      refreshToken: z.string().min(1).optional(),
+    })
+    .optional()
+    .default({}),
   query: z.any().optional(),
   params: z.any().optional(),
 });

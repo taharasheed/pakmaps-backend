@@ -25,8 +25,9 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
     throw new AppError('Invalid or expired session.', 401);
   }
 
+  let session = null;
   if (payload.sessionId) {
-    const session = await Session.findByPk(payload.sessionId);
+    session = await Session.findByPk(payload.sessionId);
     // A session with no refreshTokenHash predates the access/refresh token
     // split (it was issued back when a single token never expired) and never
     // got a refresh token of its own - reject it so it falls through to a
@@ -54,7 +55,18 @@ const authMiddleware = asyncHandler(async (req, res, next) => {
   if (!user || !user.isActive) throw new AppError('Account is not active.', 401);
 
   req.user = user;
-  req.auth = { userId: user.id, roleId: user.roleId, clientType: payload.clientType, sessionId: payload.sessionId };
+  // session.deviceInfo (set at login - see auth.service.js's createSessionAndToken)
+  // is richer than anything derivable from a single request's headers alone:
+  // it has the mobile app's self-reported platform/brand/model/appVersion,
+  // not just whatever ua-parser-js can guess from a User-Agent string (which
+  // is often nothing useful for a native app's HTTP client).
+  req.auth = {
+    userId: user.id,
+    roleId: user.roleId,
+    clientType: payload.clientType,
+    sessionId: payload.sessionId,
+    deviceInfo: session?.deviceInfo || null,
+  };
   next();
 });
 

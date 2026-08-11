@@ -10,6 +10,7 @@ const {
   parseRefreshToken,
 } = require('../src/utils/refreshToken');
 const { signToken, verifyToken } = require('../src/utils/jwt');
+const { refreshSchema } = require('../src/modules/auth/auth.validation');
 
 test('constantTimeEqual matches equal strings and rejects mismatches', () => {
   assert.equal(constantTimeEqual('abc123', 'abc123'), true);
@@ -65,6 +66,21 @@ test('signToken issues a short-lived access token (has an exp claim)', () => {
   const decoded = verifyToken(token);
   assert.equal(typeof decoded.exp, 'number');
   assert.equal(decoded.sub, 'user-1');
+});
+
+test('refreshSchema tolerates a web client sending no body at all', () => {
+  // The web refresh call deliberately sends no body/Content-Type (the
+  // refresh token comes from a cookie instead) - Express then leaves
+  // req.body as undefined, not {}. This used to 422 every single web
+  // refresh attempt regardless of whether a valid refresh cookie was even
+  // present, which is what was actually behind users getting logged out.
+  const result = refreshSchema.parse({ body: undefined, query: {}, params: {} });
+  assert.deepEqual(result.body, {});
+});
+
+test('refreshSchema still accepts a mobile client sending refreshToken in the body', () => {
+  const result = refreshSchema.parse({ body: { refreshToken: 'abc123' }, query: {}, params: {} });
+  assert.equal(result.body.refreshToken, 'abc123');
 });
 
 test('verifyToken rejects an expired access token', () => {

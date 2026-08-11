@@ -29,7 +29,7 @@ async function flushActivityLogs() {
           responseSummary: parsed.responseSummary || null,
           status: parsed.status,
           statusCode: parsed.statusCode || null,
-          latencyMs: parsed.latencyMs || null,
+          latencyMs: parsed.latencyMs ?? null,
           cacheHit: !!parsed.cacheHit,
           ipAddress: parsed.ipAddress || null,
           deviceInfo: parsed.deviceInfo || null,
