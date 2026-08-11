@@ -36,6 +36,13 @@ const schema = z.object({
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(120),
 
   TILE_SERVER_BASE_URL: z.string().default(''),
+  // Fonts/sprites for the vector style are generic, non-sensitive static
+  // assets already served publicly (unauthenticated) at this existing
+  // domain, straight off the tile renderer - reused here rather than
+  // re-proxying them through our own authed API for no benefit. The actual
+  // vector tile *data* still goes through our own proxy below, same as
+  // every other capability in this system.
+  TILES_PUBLIC_ASSET_BASE_URL: z.string().default('https://tiles-client-deployment.mapifyit.com'),
   GEOCODER_BASE_URL: z.string().default(''),
   ROUTING_BASE_URL: z.string().default(''),
   MAPIFY_V10_INTERNAL_TOKEN: z.string().default('').refine(
