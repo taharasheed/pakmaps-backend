@@ -42,14 +42,18 @@ function summarize(output) {
   return json.length > 2000 ? { truncated: true, byteLength: json.length } : output;
 }
 
-function handleProxyRequest(handlerKeyOverride) {
+// adapterKeyOverride lets a caller share one service row's config/rate-limit/
+// logging identity (slug) across two different underlying adapters - e.g.
+// the tile proxy uses the single 'tiles' service for both raster and vector
+// styles, but still needs the right fetch/cache-key logic per style.
+function handleProxyRequest(handlerKeyOverride, adapterKeyOverride) {
   return asyncHandler(async (req, res) => {
     const slug = handlerKeyOverride || req.params.slug;
     const service = await getServiceBySlug(slug);
     if (!service) throw new AppError(`Unknown service '${slug}'.`, 404);
     if (!service.isEnabled) throw new AppError(`The '${service.name}' service is currently disabled.`, 503);
 
-    const adapter = adapters[service.handlerKey];
+    const adapter = adapters[adapterKeyOverride || service.handlerKey];
     if (!adapter) throw new AppError(`No handler registered for service '${slug}'.`, 500);
 
     await checkRateLimit({

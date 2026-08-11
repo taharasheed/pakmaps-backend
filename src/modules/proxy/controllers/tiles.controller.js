@@ -8,7 +8,12 @@ const { handleProxyRequest } = require('../gateway');
 const { upstreamFetch } = require('../httpClient');
 
 const serveTileImage = handleProxyRequest('tiles');
-const serveVectorTile = handleProxyRequest('tiles-vector');
+// Shares the 'tiles' service (config, rate limit, and the audit/activity
+// log's service identity) with the raster path, but still runs the vector
+// adapter's fetch/cache logic. Both raster and vector requests show up as
+// the single "Tiles" service everywhere an admin would look; which style
+// was actually hit is still visible per request via activitySummary.
+const serveVectorTile = handleProxyRequest('tiles', 'tilesVector');
 
 // satellite is real photography - there's no vector equivalent, so it's the
 // only style still served as a flat raster image. Its real data caps out at
@@ -19,20 +24,20 @@ const ZOOM_RANGES = {
 
 // Fetches the real upstream style (including its building-3d fill-extrusion
 // layer, verbatim) and rewrites the handful of fields that hardcode
-// internal-only addresses: the vector source points back at whichever
-// public URL this style was actually reached through (tileUrlBase - lets
-// /tiles/dark and /tiles-3d/dark each produce a self-consistent style
-// instead of cross-referencing each other), and glyphs/sprite point at the
-// existing public tiles domain, since those are generic font/icon assets
-// already served there unauthenticated.
-async function buildVectorStyleJson(style, tileUrlBase) {
-  const service = await getServiceBySlug('tiles-vector');
-  if (!service) throw new AppError("Unknown service 'tiles-vector'.", 404);
-  if (!service.isEnabled) throw new AppError("The 'Tiles (Vector/3D)' service is currently disabled.", 503);
+// internal-only addresses: the vector source points back at our own public
+// tile endpoint, and glyphs/sprite point at the existing public tiles
+// domain, since those are generic font/icon assets already served there
+// unauthenticated.
+async function buildVectorStyleJson(style, req) {
+  const service = await getServiceBySlug('tiles');
+  if (!service) throw new AppError("Unknown service 'tiles'.", 404);
+  if (!service.isEnabled) throw new AppError("The 'Tiles' service is currently disabled.", 503);
 
   const upstreamRes = await upstreamFetch(`${service.baseUrl}/styles/${style}/style.json`);
   if (!upstreamRes.ok) throw new AppError('Upstream style unavailable.', 502);
   const upstream = await upstreamRes.json();
+
+  const tileUrlBase = `${req.protocol}://${req.get('host')}/api/v1/proxy/tiles/${style}`;
 
   return {
     ...upstream,
@@ -67,8 +72,7 @@ const getTiles = asyncHandler(async (req, res, next) => {
     if (z !== undefined && x !== undefined && y !== undefined) {
       return serveVectorTile(req, res, next);
     }
-    const tileUrlBase = `${req.protocol}://${req.get('host')}/api/v1/proxy/tiles/${style}`;
-    const styleJson = await buildVectorStyleJson(style, tileUrlBase);
+    const styleJson = await buildVectorStyleJson(style, req);
     return res.status(200).json({ success: true, message: 'OK', data: styleJson });
   }
 
@@ -105,22 +109,4 @@ const getTiles = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ success: true, message: 'OK', data: styleJson });
 });
 
-// Kept as its own explicit path in addition to dark/bright now living on the
-// main endpoint above - harmless, both resolve to the same underlying
-// vector data/cache, and it's a clearer, self-describing URL for anything
-// that specifically wants to signal "give me the 3D version."
-const getVectorTiles = asyncHandler(async (req, res, next) => {
-  const { z, x, y } = req.params;
-  if (z !== undefined && x !== undefined && y !== undefined) {
-    return serveVectorTile(req, res, next);
-  }
-
-  const { style } = req.params;
-  if (!VECTOR_STYLES.includes(style)) throw new AppError('Unknown tile style.', 404);
-
-  const tileUrlBase = `${req.protocol}://${req.get('host')}/api/v1/proxy/tiles-3d/${style}`;
-  const styleJson = await buildVectorStyleJson(style, tileUrlBase);
-  return res.status(200).json({ success: true, message: 'OK', data: styleJson });
-});
-
-module.exports = { getTiles, getVectorTiles };
+module.exports = { getTiles };
