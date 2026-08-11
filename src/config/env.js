@@ -46,6 +46,11 @@ const schema = z.object({
 
   MAP_MATCH_TIMEOUT_MS: z.coerce.number().int().min(250).max(1200).default(950),
   MAP_MATCH_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(10).max(600).default(60),
+
+  // Container-internal path - mounted from a host bind volume in
+  // docker-compose.yml so uploaded files survive restarts/rebuilds.
+  IMAGERY_LAYERS_DIR: z.string().default('/app/data/imagery-layers'),
+  IMAGERY_LAYERS_MAX_BYTES: z.coerce.number().int().positive().default(1073741824),
 });
 
 const parsed = schema.safeParse(process.env);

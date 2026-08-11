@@ -36,7 +36,11 @@ const getTiles = asyncHandler(async (req, res, next) => {
       [style]: {
         type: 'raster',
         tiles: [publicTileTemplate],
-        tileSize: 256,
+        // Upstream is now always fetched at @2x (see tiles.adapter.js) - the
+        // URL/zxy addressing is unchanged, each tile is just genuinely
+        // higher pixel density, so tileSize must say 512 to match or the
+        // SDK will overzoom/underzoom by one level when picking tiles.
+        tileSize: 512,
         attribution: 'MapifyIt',
       },
     },

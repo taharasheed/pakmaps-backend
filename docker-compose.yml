@@ -39,6 +39,7 @@ services:
       MAPIFY_V10_INTERNAL_TOKEN_FILE: /run/secrets/mapify-v10-api-token
     volumes:
       - /etc/mapify-v10/mapify-api.token:/run/secrets/mapify-v10-api-token:ro
+      - /home/abdullah/mapifyit-app/imagery-layers-storage:/app/data/imagery-layers
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

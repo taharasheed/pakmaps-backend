@@ -5,7 +5,12 @@ RUN apk add --no-cache netcat-openbsd
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install --omit=dev
+# python3/make/g++ are build-time only, for better-sqlite3's native addon
+# (no musl-compatible prebuilt binary is always available) - removed again
+# in the same layer so the final image doesn't carry a compiler toolchain.
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+  && npm install --omit=dev \
+  && apk del .build-deps
 
 COPY . .
 
