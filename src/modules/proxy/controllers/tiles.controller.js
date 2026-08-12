@@ -20,6 +20,10 @@ const serveVectorTile = handleProxyRequest('tiles', 'tilesVector');
 // z13 (from the renderer's own tilejson metadata).
 const ZOOM_RANGES = {
   satellite: { minzoom: 5, maxzoom: 13 },
+  // High-res (~51cm/pixel) aerial imagery for Islamabad/Rawalpindi only -
+  // a separate style rather than merged into 'satellite' since its coverage
+  // is regional, not national.
+  satellite_2: { minzoom: 12, maxzoom: 18 },
 };
 
 // Fetches the real upstream style (including its building-3d fill-extrusion
