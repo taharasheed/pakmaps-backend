@@ -26,6 +26,21 @@ function finiteNumber(value, name, min, max) {
   return value;
 }
 
+// iOS reports CLLocationDirection as -1 when heading is unavailable (device
+// stationary or course not yet resolved) - a legitimate, common value at the
+// start of a trip, not malformed input. Treated as "unknown" (null) rather
+// than rejecting the whole batch.
+function headingOrUnknown(value, name) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new ContractError(`${name} must be a finite number`);
+  }
+  if (value === -1) return null;
+  if (value < 0 || value > 359.999999) {
+    throw new ContractError(`${name} is outside its allowed range`);
+  }
+  return value;
+}
+
 function hasControlCharacter(value) {
   for (let i = 0; i < value.length; i += 1) {
     const code = value.charCodeAt(i);
@@ -100,7 +115,7 @@ function validateMapMatchRequest(input) {
       timestamp,
       accuracyMeters: finiteNumber(sample.accuracyMeters, `samples[${index}].accuracyMeters`, 1, 100),
       speedMps: finiteNumber(sample.speedMps, `samples[${index}].speedMps`, 0, 100),
-      headingDegrees: finiteNumber(sample.headingDegrees, `samples[${index}].headingDegrees`, 0, 359.999999),
+      headingDegrees: headingOrUnknown(sample.headingDegrees, `samples[${index}].headingDegrees`),
       headingAccuracyDegrees: finiteNumber(
         sample.headingAccuracyDegrees,
         `samples[${index}].headingAccuracyDegrees`,
