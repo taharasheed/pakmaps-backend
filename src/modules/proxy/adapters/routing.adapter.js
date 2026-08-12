@@ -36,6 +36,20 @@ function buildUpstreamRequest(input, service) {
   };
 }
 
+function normalizeManeuver(maneuver) {
+  return {
+    type: maneuver.type,
+    instruction: maneuver.instruction,
+    verbalPreInstruction: maneuver.verbal_pre_transition_instruction ?? null,
+    verbalPostInstruction: maneuver.verbal_post_transition_instruction ?? null,
+    streetNames: maneuver.street_names || [],
+    distance: maneuver.length ?? null,
+    duration: maneuver.time ?? null,
+    beginShapeIndex: maneuver.begin_shape_index,
+    endShapeIndex: maneuver.end_shape_index,
+  };
+}
+
 function normalizeTrip(trip) {
   if (!trip) return null;
   return {
@@ -45,6 +59,7 @@ function normalizeTrip(trip) {
       distance: leg.summary?.length ?? null,
       duration: leg.summary?.time ?? null,
       encodedPolyline: leg.shape || null,
+      maneuvers: (leg.maneuvers || []).map(normalizeManeuver),
     })),
   };
 }
