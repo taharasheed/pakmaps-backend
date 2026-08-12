@@ -34,6 +34,14 @@ const schema = z.object({
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(120),
+  // Ceiling on a user's *combined* requests across every proxy service in one
+  // window - separate from each service's own limit above. Without this, a
+  // user spread across several services (each within its own limit) has no
+  // cap on total throughput. Set above the highest single service override
+  // in use (tiles is 600) so normal heavy single-service usage isn't
+  // penalized, but well below the naive sum of all overrides (~1080), so
+  // spreading load across services for more total throughput is still capped.
+  RATE_LIMIT_GLOBAL_MAX_REQUESTS: z.coerce.number().int().positive().default(800),
 
   TILE_SERVER_BASE_URL: z.string().default(''),
   // Fonts/sprites for the vector style are generic, non-sensitive static

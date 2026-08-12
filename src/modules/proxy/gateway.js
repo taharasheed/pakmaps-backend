@@ -58,6 +58,7 @@ function handleProxyRequest(handlerKeyOverride, adapterKeyOverride) {
 
     await checkRateLimit({
       identity: req.user?.id || getClientIp(req),
+      slug,
       max: service.rateLimitOverride || undefined,
     });
 
