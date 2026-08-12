@@ -26,15 +26,15 @@ function finiteNumber(value, name, min, max) {
   return value;
 }
 
-// iOS reports CLLocationDirection as -1 when heading is unavailable (device
-// stationary or course not yet resolved) - a legitimate, common value at the
-// start of a trip, not malformed input. Treated as "unknown" (null) rather
-// than rejecting the whole batch.
+// Heading is legitimately unknown at trip start or while stationary - the
+// mobile client sends this as null; -1 (iOS's CLLocationDirection sentinel)
+// is also accepted for the same reason. Neither is malformed input, so
+// treated as "unknown" rather than rejecting the whole batch.
 function headingOrUnknown(value, name) {
+  if (value === null || value === -1) return null;
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new ContractError(`${name} must be a finite number`);
   }
-  if (value === -1) return null;
   if (value < 0 || value > 359.999999) {
     throw new ContractError(`${name} is outside its allowed range`);
   }
