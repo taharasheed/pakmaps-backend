@@ -36,17 +36,38 @@ function buildUpstreamRequest(input, service) {
   };
 }
 
+function normalizeSignElements(elements) {
+  return (elements || []).map((el) => ({
+    text: el.text,
+    consecutiveCount: el.consecutive_count ?? null,
+  }));
+}
+
+function normalizeSign(sign) {
+  if (!sign) return null;
+  return {
+    exitNumber: normalizeSignElements(sign.exit_number_elements),
+    exitBranch: normalizeSignElements(sign.exit_branch_elements),
+    exitToward: normalizeSignElements(sign.exit_toward_elements),
+    exitName: normalizeSignElements(sign.exit_name_elements),
+  };
+}
+
 function normalizeManeuver(maneuver) {
   return {
     type: maneuver.type,
     instruction: maneuver.instruction,
+    verbalTransitionAlertInstruction: maneuver.verbal_transition_alert_instruction ?? null,
     verbalPreInstruction: maneuver.verbal_pre_transition_instruction ?? null,
     verbalPostInstruction: maneuver.verbal_post_transition_instruction ?? null,
+    verbalMultiCue: maneuver.verbal_multi_cue ?? false,
     streetNames: maneuver.street_names || [],
     distance: maneuver.length ?? null,
     duration: maneuver.time ?? null,
     beginShapeIndex: maneuver.begin_shape_index,
     endShapeIndex: maneuver.end_shape_index,
+    sign: normalizeSign(maneuver.sign),
+    roundaboutExitCount: maneuver.roundabout_exit_count ?? null,
   };
 }
 
