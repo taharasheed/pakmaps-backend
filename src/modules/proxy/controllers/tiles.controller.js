@@ -23,8 +23,46 @@ const ZOOM_RANGES = {
   // High-res (~51cm/pixel) aerial imagery for Islamabad/Rawalpindi only -
   // a separate style rather than merged into 'satellite' since its coverage
   // is regional, not national.
-  satellite_2: { minzoom: 12, maxzoom: 18 },
+  satellite_2: { minzoom: 8, maxzoom: 18 },
 };
+
+// Raster styles that also draw the vector label layers (place names, roads,
+// POIs) on top of the imagery - unlabeled aerial photography is hard to
+// orient by. The underlying vector tiles are identical regardless of which
+// vector style requested them (see vectorTiles.adapter.js's cacheKeyParts),
+// so this reuses the existing 'dark' vector route rather than needing a
+// dedicated one - 'dark' specifically because its light-on-dark label
+// styling reads clearly over photographic imagery.
+const HYBRID_LABEL_STYLES = new Set(['satellite_2']);
+const LABEL_SOURCE_STYLE = 'dark';
+
+// Pulls just the label/icon layers (type: 'symbol') out of the real upstream
+// vector style - place names, road names, POI icons - along with the
+// glyphs/sprite/vector-source wiring they depend on, so a raster style can
+// overlay them without duplicating label logic that already exists for the
+// vector styles.
+async function buildHybridLabelExtras(req) {
+  const service = await getServiceBySlug('tiles');
+  if (!service) throw new AppError("Unknown service 'tiles'.", 404);
+
+  const upstreamRes = await upstreamFetch(`${service.baseUrl}/styles/${LABEL_SOURCE_STYLE}/style.json`);
+  if (!upstreamRes.ok) throw new AppError('Upstream style unavailable.', 502);
+  const upstream = await upstreamRes.json();
+
+  const tileUrlBase = `${req.protocol}://${req.get('host')}/api/v1/proxy/tiles/${LABEL_SOURCE_STYLE}`;
+
+  return {
+    vectorSource: {
+      type: 'vector',
+      tiles: [`${tileUrlBase}/{z}/{x}/{y}`],
+      minzoom: 0,
+      maxzoom: 14,
+    },
+    glyphs: `${env.TILES_PUBLIC_ASSET_BASE_URL}/fonts/{fontstack}/{range}.pbf`,
+    sprite: `${env.TILES_PUBLIC_ASSET_BASE_URL}/styles/${LABEL_SOURCE_STYLE}/sprite`,
+    symbolLayers: (upstream.layers || []).filter((layer) => layer.type === 'symbol'),
+  };
+}
 
 // Fetches the real upstream style (including its building-3d fill-extrusion
 // layer, verbatim) and rewrites the handful of fields that hardcode
@@ -91,6 +129,8 @@ const getTiles = asyncHandler(async (req, res, next) => {
 
   const publicTileTemplate = `${req.protocol}://${req.get('host')}/api/v1/proxy/tiles/${style}/{z}/{x}/{y}`;
 
+  const hybrid = HYBRID_LABEL_STYLES.has(style) ? await buildHybridLabelExtras(req) : null;
+
   const styleJson = {
     version: 8,
     name: style,
@@ -106,8 +146,13 @@ const getTiles = asyncHandler(async (req, res, next) => {
         attribution: 'MapifyIt',
         ...ZOOM_RANGES[style],
       },
+      ...(hybrid ? { openmaptiles: hybrid.vectorSource } : {}),
     },
-    layers: [{ id: style, type: 'raster', source: style }],
+    ...(hybrid ? { glyphs: hybrid.glyphs, sprite: hybrid.sprite } : {}),
+    layers: [
+      { id: style, type: 'raster', source: style },
+      ...(hybrid ? hybrid.symbolLayers : []),
+    ],
   };
 
   return res.status(200).json({ success: true, message: 'OK', data: styleJson });
