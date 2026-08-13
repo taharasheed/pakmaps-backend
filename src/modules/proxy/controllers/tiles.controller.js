@@ -33,7 +33,7 @@ const ZOOM_RANGES = {
 // so this reuses the existing 'dark' vector route rather than needing a
 // dedicated one - 'dark' specifically because its light-on-dark label
 // styling reads clearly over photographic imagery.
-const HYBRID_LABEL_STYLES = new Set(['satellite_2']);
+const HYBRID_LABEL_STYLES = new Set(['satellite', 'satellite_2']);
 const LABEL_SOURCE_STYLE = 'dark';
 
 // Pulls just the label/icon layers (type: 'symbol') out of the real upstream
