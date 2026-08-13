@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { normalizeFeatureCollection } = require('./peliasNormalize');
+const { normalizeFeatureCollection } = require('./searchNormalize');
 
 const querySchema = z.object({
   lat: z.coerce.number().min(-90).max(90),

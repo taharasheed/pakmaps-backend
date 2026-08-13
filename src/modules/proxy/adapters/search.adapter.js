@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { normalizeFeatureCollection } = require('./peliasNormalize');
+const { normalizeFeatureCollection } = require('./searchNormalize');
 
 // Triggered explicitly (button click / Enter), not on every keystroke - hits
 // the upstream's full search endpoint rather than autocomplete, so results

@@ -1,6 +1,6 @@
 // Public contract for POST /navigation/map-match: request validation,
-// translation to a Valhalla trace_attributes call, and translation of
-// Valhalla's response back into our stable public shape. Adapted from the
+// translation to the routing engine's trace_attributes call, and translation
+// of its response back into our stable public shape. Adapted from the
 // reference implementation in mapifyit_routes/map_match_handoff/ - same
 // validation bounds and response shape, ported into this codebase's
 // conventions (CommonJS, our own error type) rather than copied verbatim.
@@ -137,7 +137,7 @@ function validateMapMatchRequest(input) {
   };
 }
 
-function buildValhallaRequest(request) {
+function buildUpstreamRequest(request) {
   return {
     costing: request.costing,
     shape_match: 'map_snap',
@@ -183,11 +183,12 @@ function normalizeNames(value) {
 }
 
 // Interpolates the road's bearing at a point partway along an edge, using
-// the edge's begin/end heading - needed because Valhalla's matched_points
-// give a discrete lat/lon per GPS sample but not a heading, so without this
-// the client has to estimate heading from point-to-point vectors, which is
-// accurate on straight segments but visibly wrong through a curve (the
-// puck's rotation lags/cuts the corner instead of tracking the curve).
+// the edge's begin/end heading - needed because the routing engine's
+// matched_points give a discrete lat/lon per GPS sample but not a heading,
+// so without this the client has to estimate heading from point-to-point
+// vectors, which is accurate on straight segments but visibly wrong through
+// a curve (the puck's rotation lags/cuts the corner instead of tracking the
+// curve).
 function interpolatedHeading(beginHeading, endHeading, fraction) {
   if (beginHeading === null || endHeading === null || fraction === null) return beginHeading;
   let delta = endHeading - beginHeading;
@@ -197,7 +198,7 @@ function interpolatedHeading(beginHeading, endHeading, fraction) {
   return ((heading % 360) + 360) % 360;
 }
 
-function translateValhallaResponse(request, upstream) {
+function translateUpstreamResponse(request, upstream) {
   if (!upstream || typeof upstream !== 'object' || Array.isArray(upstream)) {
     throw new ContractError('upstream response is invalid');
   }
@@ -273,6 +274,6 @@ module.exports = {
   MAX_SAMPLES,
   MIN_SAMPLES,
   validateMapMatchRequest,
-  buildValhallaRequest,
-  translateValhallaResponse,
+  buildUpstreamRequest,
+  translateUpstreamResponse,
 };

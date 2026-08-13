@@ -1,5 +1,5 @@
 const { z } = require('zod');
-const { normalizeFeatureCollection } = require('./peliasNormalize');
+const { normalizeFeatureCollection } = require('./searchNormalize');
 
 // Triggered on every keystroke (onChange) - hits the upstream's fast
 // autocomplete endpoint, not the full search endpoint. See search.adapter.js

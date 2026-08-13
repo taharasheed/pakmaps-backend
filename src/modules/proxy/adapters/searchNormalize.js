@@ -1,4 +1,4 @@
-// Normalizes a Pelias-style GeoJSON FeatureCollection into our own stable
+// Normalizes an upstream GeoJSON FeatureCollection into our own stable
 // public contract, so swapping the upstream geocoder later doesn't change
 // what admin panel / mobile app clients receive.
 function normalizeFeatureCollection(geojson, { withDistance = false } = {}) {

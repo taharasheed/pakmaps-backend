@@ -1,7 +1,7 @@
 const { z } = require('zod');
 
-// Names match the tile server's actual style ids exactly (TileServer GL,
-// serving /styles/:id/style.json + /styles/:id/:z/:x/:y.png) - no translation
+// Names match the tile service's actual style ids exactly (serving
+// /styles/:id/style.json + /styles/:id/:z/:x/:y.png) - no translation
 // layer between our public contract and upstream.
 const TILE_STYLES = ['dark', 'bright', 'satellite', 'satellite_2'];
 

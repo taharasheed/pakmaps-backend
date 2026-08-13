@@ -5,14 +5,14 @@ const { buildCacheKey, getCached, setCached } = require('../proxy/cache');
 const {
   ContractError,
   validateMapMatchRequest,
-  buildValhallaRequest,
-  translateValhallaResponse,
+  buildUpstreamRequest,
+  translateUpstreamResponse,
 } = require('./mapMatch.contract');
 
 const MAX_BODY_BYTES = 16 * 1024;
 // Idempotent-response window for a repeated (sessionGeneration, sequenceId)
 // pair - covers the mobile client retrying after its own ~1.5s timeout
-// without re-hitting Valhalla for a request we already answered.
+// without re-hitting the routing engine for a request we already answered.
 const IDEMPOTENCY_TTL_SECONDS = 5;
 
 // One in-flight map-match request per navigation session, enforced here at
@@ -36,7 +36,7 @@ function safeLog(logger, fields) {
   logger.info(fields, 'map_match_request');
 }
 
-async function callValhalla(request) {
+async function callUpstream(request) {
   const timeoutMs = env.MAP_MATCH_TIMEOUT_MS;
   const url = `${env.ROUTING_BASE_URL}/trace_attributes`;
 
@@ -47,23 +47,23 @@ async function callValhalla(request) {
       {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify(buildValhallaRequest(request)),
+        body: JSON.stringify(buildUpstreamRequest(request)),
       },
       timeoutMs
     );
   } catch (caught) {
     if (caught?.name === 'AbortError') {
-      const timeoutError = new Error('Valhalla timed out');
+      const timeoutError = new Error('Routing engine timed out');
       timeoutError.code = 'UPSTREAM_TIMEOUT';
       throw timeoutError;
     }
-    const networkError = new Error('Valhalla is unreachable');
+    const networkError = new Error('Routing engine is unreachable');
     networkError.code = 'MATCHER_UNAVAILABLE';
     throw networkError;
   }
 
   if (!upstreamRes.ok) {
-    const upstreamError = new Error('Valhalla rejected the request');
+    const upstreamError = new Error('Routing engine rejected the request');
     upstreamError.code = 'MATCHER_UNAVAILABLE';
     throw upstreamError;
   }
@@ -71,7 +71,7 @@ async function callValhalla(request) {
   try {
     return await upstreamRes.json();
   } catch {
-    const invalidError = new Error('Valhalla returned invalid JSON');
+    const invalidError = new Error('Routing engine returned invalid JSON');
     invalidError.code = 'UPSTREAM_INVALID';
     throw invalidError;
   }
@@ -124,14 +124,14 @@ async function handleMapMatch(req, res) {
   activeSessions.add(sessionKey);
 
   try {
-    const upstream = await callValhalla(request);
+    const upstream = await callUpstream(request);
 
     let response;
     try {
-      response = translateValhallaResponse(request, upstream);
+      response = translateUpstreamResponse(request, upstream);
     } catch (caught) {
       if (caught instanceof ContractError) {
-        const invalidError = new Error('Valhalla response schema is invalid');
+        const invalidError = new Error('Routing engine response schema is invalid');
         invalidError.code = 'UPSTREAM_INVALID';
         throw invalidError;
       }

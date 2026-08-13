@@ -37,7 +37,7 @@ test('public response normalization removes all upstream engine metadata', () =>
     geocoding: {
       attribution: 'internal engine attribution',
       engine: 'internal-engine',
-      mapify: { pelias_requests: 2 },
+      mapify: { vendor_requests: 2 },
     },
     features: [{
       geometry: { coordinates: [51.531, 25.2854] },
@@ -60,7 +60,7 @@ test('public response normalization removes all upstream engine metadata', () =>
       confidence: 0.99,
     }],
   });
-  assert.doesNotMatch(JSON.stringify(output), /pelias|engine|attribution/i);
+  assert.doesNotMatch(JSON.stringify(output), /vendor|engine|attribution/i);
 });
 
 test('private token authorization is limited to the exact routing callback', () => {

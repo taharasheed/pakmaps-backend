@@ -5,8 +5,8 @@ const {
   ContractError,
   MAX_SAMPLES,
   validateMapMatchRequest,
-  buildValhallaRequest,
-  translateValhallaResponse,
+  buildUpstreamRequest,
+  translateUpstreamResponse,
 } = require('../src/modules/navigation/mapMatch.contract');
 
 const validBody = {
@@ -66,16 +66,16 @@ test('validateMapMatchRequest rejects out-of-range coordinates and control chara
   );
 });
 
-test('buildValhallaRequest produces a map_snap trace_attributes body', () => {
+test('buildUpstreamRequest produces a map_snap trace_attributes body', () => {
   const request = validateMapMatchRequest(validBody);
-  const upstream = buildValhallaRequest(request);
+  const upstream = buildUpstreamRequest(request);
   assert.equal(upstream.shape_match, 'map_snap');
   assert.equal(upstream.shape.length, 2);
   assert.equal(upstream.shape[0].lat, 40.7128);
   assert.equal(upstream.trace_options.search_radius, 30);
 });
 
-test('translateValhallaResponse maps matched Valhalla output to the public contract', () => {
+test('translateUpstreamResponse maps matched upstream output to the public contract', () => {
   const request = validateMapMatchRequest(validBody);
   const upstream = {
     matched_points: [
@@ -84,14 +84,14 @@ test('translateValhallaResponse maps matched Valhalla output to the public contr
     ],
     edges: [{ edge_index: 0, names: ['Main St'], begin_heading: 45, end_heading: 46, forward: true, way_id: '123' }],
   };
-  const response = translateValhallaResponse(request, upstream);
+  const response = translateUpstreamResponse(request, upstream);
   assert.equal(response.status, 'matched');
   assert.equal(response.matchedPoints.length, 2);
   assert.equal(response.matchedPoints[0].sampleId, 's1');
   assert.deepEqual(response.edges[0].names, ['Main St']);
 });
 
-test('translateValhallaResponse derives road bearing, edgeId, and roundabout flag for curve tracking', () => {
+test('translateUpstreamResponse derives road bearing, edgeId, and roundabout flag for curve tracking', () => {
   const request = validateMapMatchRequest(validBody);
   const upstream = {
     shape: 'encoded-polyline-geometry',
@@ -103,7 +103,7 @@ test('translateValhallaResponse derives road bearing, edgeId, and roundabout fla
       { edge_index: 0, names: ['Curve Rd'], begin_heading: 350, end_heading: 20, forward: true, way_id: '123', id: 'edge-abc', roundabout: true },
     ],
   };
-  const response = translateValhallaResponse(request, upstream);
+  const response = translateUpstreamResponse(request, upstream);
 
   assert.equal(response.shape, 'encoded-polyline-geometry');
   assert.deepEqual(response.roadNames, ['Curve Rd']);
@@ -119,7 +119,7 @@ test('translateValhallaResponse derives road bearing, edgeId, and roundabout fla
   assert.equal(response.matchedPoints[1].isRoundabout, true);
 });
 
-test('translateValhallaResponse reports partial/unmatched status correctly', () => {
+test('translateUpstreamResponse reports partial/unmatched status correctly', () => {
   const request = validateMapMatchRequest(validBody);
   const partialUpstream = {
     matched_points: [
@@ -128,8 +128,8 @@ test('translateValhallaResponse reports partial/unmatched status correctly', () 
     ],
     edges: [],
   };
-  assert.equal(translateValhallaResponse(request, partialUpstream).status, 'partial');
+  assert.equal(translateUpstreamResponse(request, partialUpstream).status, 'partial');
 
   const unmatchedUpstream = { matched_points: [{}, {}], edges: [] };
-  assert.equal(translateValhallaResponse(request, unmatchedUpstream).status, 'unmatched');
+  assert.equal(translateUpstreamResponse(request, unmatchedUpstream).status, 'unmatched');
 });
