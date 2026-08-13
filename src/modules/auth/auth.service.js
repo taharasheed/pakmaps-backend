@@ -65,6 +65,17 @@ async function registerMobileUser({ name, email, phone, gender, password }) {
 // rather than replacing it, since one comes from the client and one from the
 // request itself.
 async function createSessionAndToken(user, clientType, req, deviceMeta = {}) {
+  // Mobile is single-session by design: signing in on a new device should log
+  // the previous one out. Deleting the old session row (rather than just
+  // overwriting its refresh token) means the old device's still-valid access
+  // token is rejected on its very next request too, via the session lookup in
+  // auth.middleware.js - not just once its refresh token would eventually
+  // expire. Web (admin panel) is untouched - staff routinely have the panel
+  // open on more than one machine/tab at once.
+  if (clientType === 'mobile') {
+    await Session.destroy({ where: { userId: user.id, clientType: 'mobile' } });
+  }
+
   const { lat, lon } = getClientLocation(req);
   const refreshSecret = generateRefreshSecret();
 
