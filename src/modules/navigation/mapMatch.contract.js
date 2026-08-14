@@ -161,7 +161,6 @@ function buildUpstreamRequest(request) {
         'matched.distance_along_edge',
         'matched.distance_from_trace_point',
         'edge.names',
-        'edge.id',
         'edge.way_id',
         'edge.begin_heading',
         'edge.end_heading',
@@ -209,14 +208,23 @@ function translateUpstreamResponse(request, upstream) {
   const edges = rawEdges.slice(0, 64).map((raw, edgeIndex) => {
     const edge = raw && typeof raw === 'object' ? raw : {};
     const suppliedIndex = optionalFinite(edge.edge_index);
+    const wayId = typeof edge.way_id === 'string' || typeof edge.way_id === 'number' ? String(edge.way_id) : null;
+    const forward = typeof edge.forward === 'boolean' ? edge.forward : null;
     return {
       edgeIndex: suppliedIndex !== null && Number.isInteger(suppliedIndex) ? suppliedIndex : edgeIndex,
-      edgeId: typeof edge.id === 'string' || typeof edge.id === 'number' ? String(edge.id) : null,
+      // Deliberately NOT the routing engine's own edge id (a graph tile
+      // GraphId): that changes every time the tile graph splits a physical
+      // road into a new short segment, which is exactly the false "road
+      // changed" signal the mobile client needs to avoid when telling a
+      // service road apart from the main carriageway a few metres away.
+      // way_id + direction is stable across those splits since they all
+      // belong to the same OSM way.
+      edgeId: wayId !== null && forward !== null ? `osm-way-${wayId}:${forward ? 'forward' : 'reverse'}` : null,
       names: normalizeNames(edge.names),
       beginHeading: optionalFinite(edge.begin_heading),
       endHeading: optionalFinite(edge.end_heading),
-      forward: typeof edge.forward === 'boolean' ? edge.forward : null,
-      wayId: typeof edge.way_id === 'string' || typeof edge.way_id === 'number' ? String(edge.way_id) : null,
+      forward,
+      wayId,
       isRoundabout: edge.roundabout === true || edge.use === 'roundabout',
     };
   });

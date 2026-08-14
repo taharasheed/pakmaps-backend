@@ -100,23 +100,54 @@ test('translateUpstreamResponse derives road bearing, edgeId, and roundabout fla
       { lat: 40.713, lon: -74.0055, type: 'matched', edge_index: 0, distance_along_edge: 0.5, distance_from_trace_point: 0 },
     ],
     edges: [
-      { edge_index: 0, names: ['Curve Rd'], begin_heading: 350, end_heading: 20, forward: true, way_id: '123', id: 'edge-abc', roundabout: true },
+      { edge_index: 0, names: ['Curve Rd'], begin_heading: 350, end_heading: 20, forward: true, way_id: '123', roundabout: true },
     ],
   };
   const response = translateUpstreamResponse(request, upstream);
 
   assert.equal(response.shape, 'encoded-polyline-geometry');
   assert.deepEqual(response.roadNames, ['Curve Rd']);
-  assert.equal(response.edges[0].edgeId, 'edge-abc');
+  assert.equal(response.edges[0].edgeId, 'osm-way-123:forward');
   assert.equal(response.edges[0].isRoundabout, true);
 
   // heading interpolated across the shorter arc (350 -> 20 wraps through 0,
   // not the long way through 180) - at 50% along the edge, expect ~5deg.
   assert.equal(response.matchedPoints[0].roadBearingDegrees, 350);
   assert.equal(response.matchedPoints[1].roadBearingDegrees, 5);
-  assert.equal(response.matchedPoints[1].edgeId, 'edge-abc');
+  assert.equal(response.matchedPoints[1].edgeId, 'osm-way-123:forward');
   assert.equal(response.matchedPoints[1].distanceAlongEdge, 0.5);
   assert.equal(response.matchedPoints[1].isRoundabout, true);
+});
+
+test('translateUpstreamResponse gives a stable edgeId across split graph segments of the same way, and a distinct one for a different way/direction', () => {
+  const request = validateMapMatchRequest(validBody);
+  const upstream = {
+    matched_points: [
+      { lat: 40.7128, lon: -74.006, type: 'matched', edge_index: 0, distance_from_trace_point: 0 },
+      { lat: 40.713, lon: -74.0055, type: 'matched', edge_index: 1, distance_from_trace_point: 1.2 },
+    ],
+    edges: [
+      // Same physical way (123), but Valhalla split it into two short graph
+      // edges - as if the trace crossed a mid-block intersection.
+      { edge_index: 0, names: ['Main St'], forward: true, way_id: '123' },
+      { edge_index: 1, names: ['Main St'], forward: true, way_id: '123' },
+    ],
+  };
+  const response = translateUpstreamResponse(request, upstream);
+  assert.equal(response.matchedPoints[0].edgeId, response.matchedPoints[1].edgeId);
+
+  const serviceRoadUpstream = {
+    matched_points: [
+      { lat: 40.7128, lon: -74.006, type: 'matched', edge_index: 0, distance_from_trace_point: 0 },
+      { lat: 40.713, lon: -74.0055, type: 'matched', edge_index: 1, distance_from_trace_point: 1.2 },
+    ],
+    edges: [
+      { edge_index: 0, names: ['Main St'], forward: true, way_id: '123' },
+      { edge_index: 1, names: ['Main St Service Rd'], forward: true, way_id: '772' },
+    ],
+  };
+  const serviceRoadResponse = translateUpstreamResponse(request, serviceRoadUpstream);
+  assert.notEqual(serviceRoadResponse.matchedPoints[0].edgeId, serviceRoadResponse.matchedPoints[1].edgeId);
 });
 
 test('translateUpstreamResponse reports partial/unmatched status correctly', () => {
