@@ -8,6 +8,8 @@ const {
   createUserSchema,
   updateUserSchema,
   resetUserPasswordSchema,
+  listUsersSchema,
+  listRolesSchema,
   idParam,
 } = require('./rbac.validation');
 const { z } = require('zod');
@@ -21,13 +23,13 @@ const idOnly = z.object({ body: z.any().optional(), query: z.any().optional(), p
 
 router.get('/pages', requirePermission('roles', 'view'), pagesController.listPages);
 
-router.get('/roles', requirePermission('roles', 'view'), rolesController.listRoles);
+router.get('/roles', requirePermission('roles', 'view'), validate(listRolesSchema), rolesController.listRoles);
 router.get('/roles/:id', requirePermission('roles', 'view'), validate(idOnly), rolesController.getRole);
 router.post('/roles', requirePermission('roles', 'add'), validate(createRoleSchema), rolesController.createRole);
 router.patch('/roles/:id', requirePermission('roles', 'edit'), validate(updateRoleSchema), rolesController.updateRole);
 router.delete('/roles/:id', requirePermission('roles', 'delete'), validate(idOnly), rolesController.deleteRole);
 
-router.get('/users', requirePermission('users', 'view'), usersController.listUsers);
+router.get('/users', requirePermission('users', 'view'), validate(listUsersSchema), usersController.listUsers);
 router.get('/users/:id', requirePermission('users', 'view'), validate(idOnly), usersController.getUser);
 router.post('/users', requirePermission('users', 'add'), validate(createUserSchema), usersController.createUser);
 router.patch('/users/:id', requirePermission('users', 'edit'), validate(updateUserSchema), usersController.updateUser);

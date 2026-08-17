@@ -9,15 +9,22 @@ const roleInclude = [
 ];
 
 const listRoles = asyncHandler(async (req, res) => {
-  const roles = await Role.findAll({
+  const { page, pageSize } = req.query;
+  const { rows, count } = await Role.findAndCountAll({
     include: [...roleInclude, { model: User, as: 'users', attributes: ['id'] }],
     order: [['createdAt', 'ASC']],
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+    // permissions/users are joined many-rows-per-role - without this the
+    // count (and the subquery Sequelize builds for limit/offset) would be
+    // inflated by however many permissions/users each role has.
+    distinct: true,
   });
-  const data = roles.map((r) => {
+  const data = rows.map((r) => {
     const plain = r.toJSON();
     return { ...plain, userCount: plain.users?.length || 0, users: undefined };
   });
-  return ok(res, data);
+  return ok(res, { rows: data, page, pageSize, total: count, totalPages: Math.ceil(count / pageSize) });
 });
 
 const getRole = asyncHandler(async (req, res) => {

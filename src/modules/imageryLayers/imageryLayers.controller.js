@@ -48,8 +48,13 @@ const uploadMiddleware = (req, res, next) => {
 };
 
 const listLayers = asyncHandler(async (req, res) => {
-  const layers = await ImageryLayer.findAll({ order: [['createdAt', 'DESC']] });
-  return ok(res, layers);
+  const { page, pageSize } = req.query;
+  const { rows, count } = await ImageryLayer.findAndCountAll({
+    order: [['createdAt', 'DESC']],
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  });
+  return ok(res, { rows, page, pageSize, total: count, totalPages: Math.ceil(count / pageSize) });
 });
 
 const getLayer = asyncHandler(async (req, res) => {

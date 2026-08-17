@@ -14,6 +14,15 @@ const toggleSchema = z.object({
   params: idParam,
 });
 
+const listLayersSchema = z.object({
+  body: z.any().optional(),
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(20),
+  }),
+  params: z.any().optional(),
+});
+
 function slugify(name) {
   const base = name
     .toLowerCase()
@@ -24,4 +33,4 @@ function slugify(name) {
   return `${base || 'layer'}-${Date.now().toString(36)}`;
 }
 
-module.exports = { uploadMetaSchema, idOnly, toggleSchema, slugify };
+module.exports = { uploadMetaSchema, idOnly, toggleSchema, listLayersSchema, slugify };

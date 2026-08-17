@@ -17,4 +17,13 @@ const updateServiceSchema = z.object({
   params: idParam,
 });
 
-module.exports = { idParam, updateServiceSchema };
+const listServicesSchema = z.object({
+  body: z.any().optional(),
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(20),
+  }),
+  params: z.any().optional(),
+});
+
+module.exports = { idParam, updateServiceSchema, listServicesSchema };

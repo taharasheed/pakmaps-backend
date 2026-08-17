@@ -7,11 +7,14 @@ const { User, Role } = require('../../db/models');
 const { recordAudit } = require('../audit/audit.service');
 
 const listUsers = asyncHandler(async (req, res) => {
-  const users = await User.findAll({
+  const { page, pageSize } = req.query;
+  const { rows, count } = await User.findAndCountAll({
     include: [{ model: Role, as: 'role', attributes: ['id', 'name', 'canAccessMobileApp'] }],
     order: [['createdAt', 'DESC']],
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
   });
-  return ok(res, users);
+  return ok(res, { rows, page, pageSize, total: count, totalPages: Math.ceil(count / pageSize) });
 });
 
 const getUser = asyncHandler(async (req, res) => {

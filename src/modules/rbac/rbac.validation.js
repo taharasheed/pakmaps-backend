@@ -56,6 +56,24 @@ const resetUserPasswordSchema = z.object({
   params: idParam,
 });
 
+const listUsersSchema = z.object({
+  body: z.any().optional(),
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(20),
+  }),
+  params: z.any().optional(),
+});
+
+const listRolesSchema = z.object({
+  body: z.any().optional(),
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(20),
+  }),
+  params: z.any().optional(),
+});
+
 module.exports = {
   idParam,
   createRoleSchema,
@@ -63,4 +81,6 @@ module.exports = {
   createUserSchema,
   updateUserSchema,
   resetUserPasswordSchema,
+  listUsersSchema,
+  listRolesSchema,
 };

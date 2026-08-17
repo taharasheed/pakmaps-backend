@@ -18,8 +18,13 @@ const createServiceSchema = z.object({
 });
 
 const listServices = asyncHandler(async (req, res) => {
-  const services = await ApiService.findAll({ order: [['name', 'ASC']] });
-  return ok(res, services);
+  const { page, pageSize } = req.query;
+  const { rows, count } = await ApiService.findAndCountAll({
+    order: [['name', 'ASC']],
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  });
+  return ok(res, { rows, page, pageSize, total: count, totalPages: Math.ceil(count / pageSize) });
 });
 
 const getService = asyncHandler(async (req, res) => {
