@@ -1,8 +1,16 @@
 const { z } = require('zod');
+const env = require('../../../config/env');
+
+function scaleDuration(seconds) {
+  if (seconds === null || seconds === undefined) return seconds;
+  return Math.round(seconds * env.ROUTING_DURATION_SCALE);
+}
 
 const locationSchema = z.object({
   lat: z.number().min(-90).max(90),
   lon: z.number().min(-180).max(180),
+  heading: z.number().min(0).max(359).optional(),
+  headingTolerance: z.number().min(0).max(180).optional(),
 });
 
 const bodySchema = z.object({
@@ -21,7 +29,12 @@ function parseInput(req) {
 
 function buildUpstreamRequest(input, service) {
   const body = {
-    locations: input.locations.map((l) => ({ lat: l.lat, lon: l.lon })),
+    locations: input.locations.map((l) => ({
+      lat: l.lat,
+      lon: l.lon,
+      ...(l.heading !== undefined ? { heading: l.heading } : {}),
+      ...(l.headingTolerance !== undefined ? { heading_tolerance: l.headingTolerance } : {}),
+    })),
     costing: input.costing,
     units: input.units,
     alternates: input.alternates,
@@ -63,7 +76,7 @@ function normalizeManeuver(maneuver) {
     verbalMultiCue: maneuver.verbal_multi_cue ?? false,
     streetNames: maneuver.street_names || [],
     distance: maneuver.length ?? null,
-    duration: maneuver.time ?? null,
+    duration: scaleDuration(maneuver.time) ?? null,
     beginShapeIndex: maneuver.begin_shape_index,
     endShapeIndex: maneuver.end_shape_index,
     sign: normalizeSign(maneuver.sign),
@@ -75,10 +88,10 @@ function normalizeTrip(trip) {
   if (!trip) return null;
   return {
     distance: trip.summary?.length ?? null,
-    duration: trip.summary?.time ?? null,
+    duration: scaleDuration(trip.summary?.time) ?? null,
     legs: (trip.legs || []).map((leg) => ({
       distance: leg.summary?.length ?? null,
-      duration: leg.summary?.time ?? null,
+      duration: scaleDuration(leg.summary?.time) ?? null,
       encodedPolyline: leg.shape || null,
       maneuvers: (leg.maneuvers || []).map(normalizeManeuver),
     })),
@@ -97,7 +110,9 @@ function normalizeResponse(upstreamJson, input) {
 }
 
 function cacheKeyParts(input) {
-  const points = input.locations.map((l) => `${l.lat.toFixed(5)},${l.lon.toFixed(5)}`).join('|');
+  const points = input.locations
+    .map((l) => `${l.lat.toFixed(5)},${l.lon.toFixed(5)},${l.heading ?? ''},${l.headingTolerance ?? ''}`)
+    .join('|');
   return `${points}:${input.costing}:${input.units}:${input.alternates}:${JSON.stringify(input.costing_options || {})}`;
 }
 

@@ -15,7 +15,7 @@ const app = express();
 
 // CORS only governs browser requests (the admin panel); native mobile app
 // requests aren't subject to CORS at all, so this doesn't need to allow them.
-// TEMP-DEMO-CORS: localhost:8888 added for a one-off MapLibre demo page, remove after.
+// TEMP-DEMO-CORS: localhost:8766 added for a one-off MapLibre demo page, remove after.
 // TRUST_PROXY as a numeric hop count (e.g. "1") must be a Number, not a
 // string, or Express silently fails to treat X-Forwarded-* as trusted -
 // this broke req.protocol behind nginx (always read back as "http").
@@ -24,7 +24,7 @@ app.set('trust proxy', trustProxyValue);
 app.use(helmet());
 app.use(
   cors({
-    origin: [env.ADMIN_PANEL_ORIGIN, 'http://localhost:8888'],
+    origin: [env.ADMIN_PANEL_ORIGIN, 'http://localhost:8766'],
     credentials: true,
   })
 );
