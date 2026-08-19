@@ -83,28 +83,38 @@ function handleProxyRequest(handlerKeyOverride, adapterKeyOverride) {
     let statusCode = 200;
     let output;
 
-    try {
-      output = await withConcurrencyLimit(slug, service.concurrencyLimit, async () => {
-        const upstreamReq = adapter.buildUpstreamRequest(input, service, req);
-        const upstreamRes = await upstreamFetch(upstreamReq.url, {
-          method: upstreamReq.method,
-          headers: upstreamReq.headers,
-          body: upstreamReq.body,
-        });
-
-        statusCode = upstreamRes.status;
-        if (!upstreamRes.ok) {
-          throw new AppError(`Upstream service returned an error (${upstreamRes.status}).`, 502);
-        }
-
-        if (adapter.isBinary) {
-          const buf = Buffer.from(await upstreamRes.arrayBuffer());
-          return { buf, contentType: upstreamRes.headers.get('content-type') || 'application/octet-stream' };
-        }
-
-        const json = await upstreamRes.json();
-        return adapter.normalizeResponse(json, input);
+    const doUpstreamFetch = async () => {
+      const upstreamReq = adapter.buildUpstreamRequest(input, service, req);
+      const upstreamRes = await upstreamFetch(upstreamReq.url, {
+        method: upstreamReq.method,
+        headers: upstreamReq.headers,
+        body: upstreamReq.body,
       });
+
+      statusCode = upstreamRes.status;
+      if (!upstreamRes.ok) {
+        throw new AppError(`Upstream service returned an error (${upstreamRes.status}).`, 502);
+      }
+
+      if (adapter.isBinary) {
+        const buf = Buffer.from(await upstreamRes.arrayBuffer());
+        return { buf, contentType: upstreamRes.headers.get('content-type') || 'application/octet-stream' };
+      }
+
+      const json = await upstreamRes.json();
+      return adapter.normalizeResponse(json, input);
+    };
+
+    try {
+      // An adapter can opt out of the shared concurrency pool/circuit
+      // breaker entirely (extraVectorTiles does, as of 2026-08-18) when a
+      // normal, expected non-2xx response (e.g. a 404 for a tile z/x/y with
+      // no data - not an actual upstream fault) would otherwise get counted
+      // as a breaker failure and trip it for every other request on the same
+      // slug, including ones that would've succeeded.
+      output = adapter.skipConcurrencyLimit
+        ? await doUpstreamFetch()
+        : await withConcurrencyLimit(slug, service.concurrencyLimit, doUpstreamFetch);
     } catch (err) {
       const latencyMs = Date.now() - startedAt;
       afterResponse({ req, slug, status: 'error', statusCode: err.statusCode || 502, latencyMs, cacheHit: false, input, output: null, adapter });

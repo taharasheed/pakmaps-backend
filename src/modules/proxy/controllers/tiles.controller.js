@@ -4,6 +4,7 @@ const env = require('../../../config/env');
 const { getServiceBySlug } = require('../registry');
 const { TILE_STYLES } = require('../adapters/tiles.adapter');
 const { VECTOR_STYLES } = require('../adapters/vectorTiles.adapter');
+const { KNOWN_EXTRA_SOURCES, SOURCE_BOUNDS } = require('../adapters/extraVectorTiles.adapter');
 const { handleProxyRequest } = require('../gateway');
 const { upstreamFetch } = require('../httpClient');
 
@@ -65,11 +66,16 @@ async function buildHybridLabelExtras(req) {
 }
 
 // Fetches the real upstream style (including its building-3d fill-extrusion
-// layer, verbatim) and rewrites the handful of fields that hardcode
-// internal-only addresses: the vector source points back at our own public
-// tile endpoint, and glyphs/sprite point at the existing public tiles
-// domain, since those are generic font/icon assets already served there
-// unauthenticated.
+// layer, verbatim) and rewrites the fields that hardcode internal-only
+// addresses: every vector source points back at our own public tile
+// endpoint (openmaptiles at its dedicated route, any other known source via
+// the generic extraVectorTiles one - see that adapter's KNOWN_EXTRA_SOURCES
+// for why 'known': tileserver-gl resolves every mbtiles:// source to an
+// address only reachable from inside this host's docker network, and a
+// source missing from that list would otherwise reach clients unrewritten
+// and unreachable, exactly as 'buildings-tc' did before this list existed).
+// glyphs/sprite point at the existing public tiles domain, since those are
+// generic font/icon assets already served there unauthenticated.
 async function buildVectorStyleJson(style, req) {
   const service = await getServiceBySlug('tiles');
   if (!service) throw new AppError("Unknown service 'tiles'.", 404);
@@ -80,6 +86,20 @@ async function buildVectorStyleJson(style, req) {
   const upstream = await upstreamRes.json();
 
   const tileUrlBase = `${req.protocol}://${req.get('host')}/api/v1/proxy/tiles/${style}`;
+  const extraSourceUrlBase = `${req.protocol}://${req.get('host')}/api/v1/proxy/tiles-source`;
+
+  const rewrittenExtraSources = {};
+  for (const sourceId of KNOWN_EXTRA_SOURCES) {
+    if (!upstream.sources[sourceId]) continue;
+    rewrittenExtraSources[sourceId] = {
+      ...upstream.sources[sourceId],
+      url: undefined,
+      tiles: [`${extraSourceUrlBase}/${sourceId}/{z}/{x}/{y}`],
+      minzoom: 0,
+      maxzoom: 14,
+      bounds: SOURCE_BOUNDS[sourceId],
+    };
+  }
 
   return {
     ...upstream,
@@ -91,6 +111,7 @@ async function buildVectorStyleJson(style, req) {
         minzoom: 0,
         maxzoom: 14,
       },
+      ...rewrittenExtraSources,
     },
     glyphs: `${env.TILES_PUBLIC_ASSET_BASE_URL}/fonts/{fontstack}/{range}.pbf`,
     sprite: `${env.TILES_PUBLIC_ASSET_BASE_URL}/styles/${style}/sprite`,

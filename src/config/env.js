@@ -53,6 +53,15 @@ const schema = z.object({
   TILES_PUBLIC_ASSET_BASE_URL: z.string().default('https://tiles-client-deployment.mapifyit.com'),
   GEOCODER_BASE_URL: z.string().default(''),
   ROUTING_BASE_URL: z.string().default(''),
+  // Valhalla's ETAs run on static per-road-class average speeds only (no
+  // live traffic layer is deployed), so they trend high vs real Pakistani
+  // traffic. 0.764 = 1/1.309, the median (route-duration / Google-live-
+  // traffic-duration) ratio measured across a 30-route benchmark spanning 8
+  // major cities on 2026-08-18 - not a guess. This is a stopgap multiplier
+  // on the duration Valhalla returns, not a real fix (that needs a live
+  // traffic feed); kept as an env knob so it can be re-tuned or disabled (1)
+  // without a code change as more benchmark data comes in.
+  ROUTING_DURATION_SCALE: z.coerce.number().positive().default(0.764),
   MAPIFY_V10_INTERNAL_TOKEN: z.string().default('').refine(
     (value) => value === '' || value.length >= 32,
     'MAPIFY_V10_INTERNAL_TOKEN must be empty or at least 32 characters'
