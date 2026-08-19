@@ -57,11 +57,15 @@ function clearAuthCookies(res) {
 // token back in a JS-readable response body would defeat the point of
 // httpOnly. Mobile has no cookie jar, so it gets both tokens in the body and
 // is responsible for storing them itself (see the integration guide).
-function tokenResponseData(clientType, user, accessToken, refreshToken) {
+function tokenResponseData(clientType, user, accessToken, refreshToken, notificationHub) {
   const data = { user: serializeUser(user) };
   if (clientType === 'mobile') {
     data.accessToken = accessToken;
     data.refreshToken = refreshToken;
+    // Null whenever notification-hub isn't configured, was unreachable, or
+    // this client didn't send a deviceId yet - never block on it, the client
+    // just falls back to minting its own connect-token later.
+    data.notificationHub = notificationHub;
   }
   return data;
 }
@@ -74,17 +78,27 @@ function pickDeviceMeta(body) {
 const signup = asyncHandler(async (req, res) => {
   const { name, email, phone, gender, password } = req.body;
   const user = await registerMobileUser({ name, email, phone, gender, password });
-  const { session, accessToken, refreshToken } = await createSessionAndToken(user, 'mobile', req, pickDeviceMeta(req.body));
+  const { session, accessToken, refreshToken, notificationHub } = await createSessionAndToken(
+    user,
+    'mobile',
+    req,
+    pickDeviceMeta(req.body)
+  );
 
   await recordAudit({ req, user, action: 'signup', entityType: 'session', entityId: session.id, source: 'mobile' });
 
-  return created(res, tokenResponseData('mobile', user, accessToken, refreshToken), 'Account created.');
+  return created(res, tokenResponseData('mobile', user, accessToken, refreshToken, notificationHub), 'Account created.');
 });
 
 const login = asyncHandler(async (req, res) => {
   const { email, password, clientType } = req.body;
   const user = await authenticateCredentials(email, password, clientType);
-  const { session, accessToken, refreshToken } = await createSessionAndToken(user, clientType, req, pickDeviceMeta(req.body));
+  const { session, accessToken, refreshToken, notificationHub } = await createSessionAndToken(
+    user,
+    clientType,
+    req,
+    pickDeviceMeta(req.body)
+  );
 
   await user.update({ lastLoginAt: new Date() });
   await recordAudit({ req, user, action: 'login', entityType: 'session', entityId: session.id, source: clientType });
@@ -93,7 +107,7 @@ const login = asyncHandler(async (req, res) => {
     setAuthCookies(res, accessToken, refreshToken);
   }
 
-  return ok(res, tokenResponseData(clientType, user, accessToken, refreshToken), 'Logged in successfully.');
+  return ok(res, tokenResponseData(clientType, user, accessToken, refreshToken, notificationHub), 'Logged in successfully.');
 });
 
 // Public - the access token is presumably already expired, that's the whole

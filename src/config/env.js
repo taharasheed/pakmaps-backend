@@ -66,6 +66,13 @@ const schema = z.object({
   // docker-compose.yml so uploaded files survive restarts/rebuilds.
   IMAGERY_LAYERS_DIR: z.string().default('/app/data/imagery-layers'),
   IMAGERY_LAYERS_MAX_BYTES: z.coerce.number().int().positive().default(1073741824),
+
+  // notification-hub is a separate, standalone service - Pak Maps is just one
+  // of its tenant apps. Both default to '' (not required) so a deployment
+  // that hasn't registered with it yet still boots fine; the notificationHub
+  // module treats an unconfigured URL/key as "feature disabled", not an error.
+  NOTIFICATION_HUB_URL: z.string().default(''),
+  NOTIFICATION_HUB_API_KEY: z.string().default(''),
 });
 
 const parsed = schema.safeParse(process.env);

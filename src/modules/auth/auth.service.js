@@ -11,6 +11,7 @@ const {
   parseRefreshToken,
 } = require('../../utils/refreshToken');
 const { getClientIp, getDeviceInfo, getClientLocation } = require('../../utils/requestMeta');
+const notificationHub = require('../notificationHub/notificationHub.client');
 
 // Sliding window for the refresh token - reset to "now + this" on every
 // successful rotateSession() call, so anyone using the app at all within the
@@ -73,7 +74,40 @@ async function createSessionAndToken(user, clientType, req, deviceMeta = {}) {
   // expire. Web (admin panel) is untouched - staff routinely have the panel
   // open on more than one machine/tab at once.
   if (clientType === 'mobile') {
+    const evictedSessions = await Session.findAll({
+      where: { userId: user.id, clientType: 'mobile' },
+      attributes: ['id', 'deviceInfo'],
+    });
     await Session.destroy({ where: { userId: user.id, clientType: 'mobile' } });
+
+    // Disable (not delete) the evicted device in notification-hub - it keeps
+    // its history, it just stops receiving pushes and can't reconnect until
+    // it's re-registered by a future login. notificationHub.setDeviceActive
+    // never throws, so a notification-hub outage here can't fail this login.
+    await Promise.all(
+      evictedSessions
+        .map((s) => s.deviceInfo?.notificationHubDeviceId)
+        .filter(Boolean)
+        .map((deviceId) => notificationHub.setDeviceActive(deviceId, false))
+    );
+  }
+
+  // Registers this device with notification-hub and mints its first
+  // connect-token inline, using data the client already sent at login/signup
+  // (see deviceMetaSchema) - no separate API call needed on the client's
+  // part for the common "log in, then connect" case. Silently skipped for
+  // web, or for any mobile client not yet sending a deviceId (older builds).
+  let notificationHubInfo = null;
+  if (clientType === 'mobile' && deviceMeta.deviceId) {
+    const registered = await notificationHub.registerDevice({
+      clientDeviceId: deviceMeta.deviceId,
+      externalUserId: user.id,
+      platform: deviceMeta.platform,
+    });
+    if (registered) {
+      const token = await notificationHub.mintConnectToken(registered.deviceId);
+      notificationHubInfo = { deviceId: registered.deviceId, connectToken: token?.connectToken || null, expiresAt: token?.expiresAt || null };
+    }
   }
 
   const { lat, lon } = getClientLocation(req);
@@ -82,7 +116,11 @@ async function createSessionAndToken(user, clientType, req, deviceMeta = {}) {
   const session = await Session.create({
     userId: user.id,
     clientType,
-    deviceInfo: { ...getDeviceInfo(req), ...deviceMeta },
+    deviceInfo: {
+      ...getDeviceInfo(req),
+      ...deviceMeta,
+      ...(notificationHubInfo ? { notificationHubDeviceId: notificationHubInfo.deviceId } : {}),
+    },
     ipAddress: getClientIp(req),
     lat,
     lon,
@@ -94,7 +132,7 @@ async function createSessionAndToken(user, clientType, req, deviceMeta = {}) {
   const accessToken = signToken({ sub: user.id, roleId: user.roleId, clientType, sessionId: session.id });
   const refreshToken = formatRefreshToken(session.id, refreshSecret);
 
-  return { session, accessToken, refreshToken };
+  return { session, accessToken, refreshToken, notificationHub: notificationHubInfo };
 }
 
 // Verifies a presented refresh token and, if valid, rotates it: a new access
