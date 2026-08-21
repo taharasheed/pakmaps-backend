@@ -82,6 +82,15 @@ const schema = z.object({
   // module treats an unconfigured URL/key as "feature disabled", not an error.
   NOTIFICATION_HUB_URL: z.string().default(''),
   NOTIFICATION_HUB_API_KEY: z.string().default(''),
+
+  // Per PAKMAPS_R1_PUSH_BACKEND_IMPLEMENTATION_GUIDE.md's "Scope and
+  // rollout": this backend deployment only issues R1 Push subscription
+  // credentials when this is explicitly 'custom' AND the client's own
+  // request also sends pushProvider: 'custom' (see auth.validation.js) -
+  // both must agree, so an FCM/APNs build (or an older client that doesn't
+  // send pushProvider at all) never triggers R1 registration even if it
+  // happens to send R1-looking fields.
+  PUSH_NOTIFICATION_PROVIDER: z.enum(['', 'custom']).default(''),
 });
 
 const parsed = schema.safeParse(process.env);

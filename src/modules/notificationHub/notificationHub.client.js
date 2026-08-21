@@ -56,6 +56,15 @@ async function mintConnectToken(deviceId) {
   return safeCall('/v1/devices/' + deviceId + '/connect-token', { method: 'POST' }, 'mintConnectToken');
 }
 
+// Bootstraps the long-lived, gateway-rotated credential the on-device daemon
+// uses for the multiplexed /device socket - distinct from the short-lived
+// JWT connect-token above, which is for a direct (non-daemon) connection.
+// Same proxy pattern either way: the daemon/app never talks to
+// notification-hub directly, only to this backend.
+async function mintSubscriptionCredential(deviceId) {
+  return safeCall('/v1/devices/' + deviceId + '/subscription-credential', { method: 'POST' }, 'mintSubscriptionCredential');
+}
+
 async function setDeviceActive(deviceId, isActive) {
   return safeCall(
     '/v1/devices/' + deviceId,
@@ -64,4 +73,35 @@ async function setDeviceActive(deviceId, isActive) {
   );
 }
 
-module.exports = { isConfigured, registerDevice, mintConnectToken, setDeviceActive };
+// Mints a subscription for the R1 Push raw-WS daemon protocol - the third,
+// parallel registration path alongside registerDevice/mintConnectToken
+// (direct connections) and registerDevice/mintSubscriptionCredential (the
+// original notification-hub-daemon Socket.IO protocol). Same idempotent-
+// upsert semantics on notification-hub's side (appId + appInstallationId +
+// externalUserId), safe to call again on retry.
+async function mintSubscription({ externalUserId, appInstallationId, packageName, applicationSessionId }) {
+  const data = await safeCall(
+    '/v1/subscription-credentials',
+    { method: 'POST', body: JSON.stringify({ externalUserId, appInstallationId, packageName, applicationSessionId }) },
+    'mintSubscription'
+  );
+  return data?.subscriptionId ? data : null;
+}
+
+// Fire-and-forget, unthrowable like every other call here - see safeCall.
+// notification-hub treats an already-revoked or unknown subscriptionId as a
+// successful idempotent outcome on its own side too, so there's nothing
+// further for a caller here to branch on.
+async function revokeSubscription(subscriptionId) {
+  return safeCall('/v1/subscriptions/' + subscriptionId, { method: 'DELETE' }, 'revokeSubscription');
+}
+
+module.exports = {
+  isConfigured,
+  registerDevice,
+  mintConnectToken,
+  mintSubscriptionCredential,
+  setDeviceActive,
+  mintSubscription,
+  revokeSubscription,
+};

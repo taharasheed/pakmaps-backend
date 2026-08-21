@@ -8,14 +8,45 @@ const deviceMetaSchema = z.object({
   model: z.string().max(100).optional(),
   brand: z.string().max(100).optional(),
   appVersion: z.string().max(50).optional(),
+  // R1 Push build context (PAKMAPS_R1_PUSH_BACKEND_IMPLEMENTATION_GUIDE.md).
+  // pushProvider must be exactly 'custom' AND env.PUSH_NOTIFICATION_PROVIDER
+  // must independently agree (see auth.service.js) before any R1 credential
+  // is minted - never trusted as authorization on its own, only used to
+  // pick which registration path to take. appInstallationId/packageName are
+  // never trusted as authorization either; the gateway independently
+  // re-validates both when the daemon actually connects.
+  pushProvider: z.string().max(20).optional(),
+  appInstallationId: z.string().min(8).max(200).optional(),
+  packageName: z.string().max(255).optional(),
 });
 
+// R1's own daemon (RegistrationSecurity.verify()) requires a non-blank
+// packageName before it will even accept a registration - so a
+// pushProvider:'custom' request missing packageName can never actually
+// result in a working subscription. Failing loudly here, at the request
+// boundary, is much easier to debug for whoever is integrating the mobile
+// build than the alternative (auth.service.js's mintSubscription call
+// failing server-side against notification-hub's own required-field check,
+// silently degrading to r1Push: null with no signal beyond a log line).
+function requirePackageNameForR1Push(data, ctx) {
+  if (data.pushProvider === 'custom' && !data.packageName) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'packageName is required when pushProvider is "custom".',
+      path: ['packageName'],
+    });
+  }
+}
+
 const loginSchema = z.object({
-  body: z.object({
-    email: z.string().email(),
-    password: z.string().min(1),
-    clientType: z.enum(['web', 'mobile']).default('web'),
-  }).merge(deviceMetaSchema),
+  body: z
+    .object({
+      email: z.string().email(),
+      password: z.string().min(1),
+      clientType: z.enum(['web', 'mobile']).default('web'),
+    })
+    .merge(deviceMetaSchema)
+    .superRefine(requirePackageNameForR1Push),
   query: z.any().optional(),
   params: z.any().optional(),
 });
@@ -34,7 +65,8 @@ const signupSchema = z.object({
     .refine((data) => data.password === data.confirmPassword, {
       message: 'Passwords do not match.',
       path: ['confirmPassword'],
-    }),
+    })
+    .superRefine(requirePackageNameForR1Push),
   query: z.any().optional(),
   params: z.any().optional(),
 });

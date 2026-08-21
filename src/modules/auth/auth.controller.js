@@ -13,6 +13,7 @@ const {
   rotateSession,
   serializeUser,
   findUserWithRole,
+  disableNotificationHubDevices,
 } = require('./auth.service');
 
 // The refresh token gets its own cookie, scoped to only the one route that
@@ -57,28 +58,32 @@ function clearAuthCookies(res) {
 // token back in a JS-readable response body would defeat the point of
 // httpOnly. Mobile has no cookie jar, so it gets both tokens in the body and
 // is responsible for storing them itself (see the integration guide).
-function tokenResponseData(clientType, user, accessToken, refreshToken, notificationHub) {
+function tokenResponseData(clientType, user, accessToken, refreshToken, notificationHub, r1Push) {
   const data = { user: serializeUser(user) };
   if (clientType === 'mobile') {
     data.accessToken = accessToken;
     data.refreshToken = refreshToken;
     // Null whenever notification-hub isn't configured, was unreachable, or
     // this client didn't send a deviceId yet - never block on it, the client
-    // just falls back to minting its own connect-token later.
+    // just falls back to minting its own connect-token later. Exactly one of
+    // notificationHub/r1Push is ever non-null for a given login - which one
+    // depends on the R1 Push build gate (see auth.service.js's
+    // createSessionAndToken) - never both.
     data.notificationHub = notificationHub;
+    data.r1Push = r1Push;
   }
   return data;
 }
 
 function pickDeviceMeta(body) {
-  const { deviceId, platform, model, brand, appVersion } = body;
-  return { deviceId, platform, model, brand, appVersion };
+  const { deviceId, platform, model, brand, appVersion, pushProvider, appInstallationId, packageName } = body;
+  return { deviceId, platform, model, brand, appVersion, pushProvider, appInstallationId, packageName };
 }
 
 const signup = asyncHandler(async (req, res) => {
   const { name, email, phone, gender, password } = req.body;
   const user = await registerMobileUser({ name, email, phone, gender, password });
-  const { session, accessToken, refreshToken, notificationHub } = await createSessionAndToken(
+  const { session, accessToken, refreshToken, notificationHub, r1Push } = await createSessionAndToken(
     user,
     'mobile',
     req,
@@ -87,13 +92,13 @@ const signup = asyncHandler(async (req, res) => {
 
   await recordAudit({ req, user, action: 'signup', entityType: 'session', entityId: session.id, source: 'mobile' });
 
-  return created(res, tokenResponseData('mobile', user, accessToken, refreshToken, notificationHub), 'Account created.');
+  return created(res, tokenResponseData('mobile', user, accessToken, refreshToken, notificationHub, r1Push), 'Account created.');
 });
 
 const login = asyncHandler(async (req, res) => {
   const { email, password, clientType } = req.body;
   const user = await authenticateCredentials(email, password, clientType);
-  const { session, accessToken, refreshToken, notificationHub } = await createSessionAndToken(
+  const { session, accessToken, refreshToken, notificationHub, r1Push } = await createSessionAndToken(
     user,
     clientType,
     req,
@@ -107,7 +112,7 @@ const login = asyncHandler(async (req, res) => {
     setAuthCookies(res, accessToken, refreshToken);
   }
 
-  return ok(res, tokenResponseData(clientType, user, accessToken, refreshToken, notificationHub), 'Logged in successfully.');
+  return ok(res, tokenResponseData(clientType, user, accessToken, refreshToken, notificationHub, r1Push), 'Logged in successfully.');
 });
 
 // Public - the access token is presumably already expired, that's the whole
@@ -129,7 +134,9 @@ const refresh = asyncHandler(async (req, res) => {
 
 const logout = asyncHandler(async (req, res) => {
   if (req.auth?.sessionId) {
+    const session = await Session.findByPk(req.auth.sessionId);
     await Session.destroy({ where: { id: req.auth.sessionId } });
+    if (session) await disableNotificationHubDevices([session]);
   }
   await recordAudit({ req, user: req.user, action: 'logout', entityType: 'session', entityId: req.auth?.sessionId });
   clearAuthCookies(res);
@@ -169,15 +176,18 @@ const listSessions = asyncHandler(async (req, res) => {
 
 const revokeSession = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const session = await Session.findOne({ where: { id, userId: req.user.id } });
   await Session.destroy({ where: { id, userId: req.user.id } });
+  if (session) await disableNotificationHubDevices([session]);
   await recordAudit({ req, user: req.user, action: 'revoke_session', entityType: 'session', entityId: id });
   return ok(res, null, 'Session revoked.');
 });
 
 const revokeOtherSessions = asyncHandler(async (req, res) => {
-  await Session.destroy({
-    where: { userId: req.user.id, id: { [Op.ne]: req.auth.sessionId } },
-  });
+  const otherSessionsWhere = { userId: req.user.id, id: { [Op.ne]: req.auth.sessionId } };
+  const sessions = await Session.findAll({ where: otherSessionsWhere, attributes: ['id', 'deviceInfo'] });
+  await Session.destroy({ where: otherSessionsWhere });
+  await disableNotificationHubDevices(sessions);
   await recordAudit({ req, user: req.user, action: 'revoke_other_sessions', entityType: 'user', entityId: req.user.id });
   return ok(res, null, 'All other sessions logged out.');
 });

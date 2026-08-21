@@ -30,6 +30,43 @@ async function findUserWithRole(email) {
   return User.scope('withPassword').findOne({ where: { email }, include: [roleIncludeWithPermissions] });
 }
 
+// Disables (never deletes) each session's notification-hub registration(s),
+// if it has any - shared by the new-login eviction path below and by every
+// place a session is destroyed directly (logout, revokeSession,
+// revokeOtherSessions; see auth.controller.js), and by users.controller.js's
+// account disable/delete paths. A session's deviceInfo may carry a
+// notificationHubDeviceId (direct/legacy or notification-hub-daemon path)
+// and/or a notificationHubSubscriptionId (R1 Push raw-WS path) - never both
+// for the same session in practice (see createSessionAndToken), but both are
+// checked so this stays correct regardless. A web session's deviceInfo never
+// has either set, so calling this on one is a no-op, not a special case
+// callers need to branch around. Both notificationHub calls are
+// unthrowable, so a notification-hub outage here can't fail the caller's own
+// destroy/logout flow.
+//
+// Disabling on logout (not just on new-login eviction) is a deliberate
+// change from this integration's original design, revisited once the
+// device's own gateway credential became long-lived and gateway-rotated
+// rather than a self-expiring short-TTL token - leaving it valid
+// indefinitely after logout is a materially bigger residual exposure than it
+// used to be. upsertDevice on notification-hub's side always resets
+// isActive:true on the device's next real login, so the Device path is
+// never a one-way trap; the Subscription path is a deliberate exception -
+// see subscriptions.service.js's createSubscription for why a revoked R1
+// subscription does NOT get resurrected by a later mint.
+async function disableNotificationHubDevices(sessions) {
+  await Promise.all([
+    ...sessions
+      .map((s) => s.deviceInfo?.notificationHubDeviceId)
+      .filter(Boolean)
+      .map((deviceId) => notificationHub.setDeviceActive(deviceId, false)),
+    ...sessions
+      .map((s) => s.deviceInfo?.notificationHubSubscriptionId)
+      .filter(Boolean)
+      .map((subscriptionId) => notificationHub.revokeSubscription(subscriptionId)),
+  ]);
+}
+
 async function authenticateCredentials(email, password, clientType) {
   const user = await findUserWithRole(email);
   if (!user) throw new AppError('Invalid email or password.', 401);
@@ -79,26 +116,43 @@ async function createSessionAndToken(user, clientType, req, deviceMeta = {}) {
       attributes: ['id', 'deviceInfo'],
     });
     await Session.destroy({ where: { userId: user.id, clientType: 'mobile' } });
-
-    // Disable (not delete) the evicted device in notification-hub - it keeps
-    // its history, it just stops receiving pushes and can't reconnect until
-    // it's re-registered by a future login. notificationHub.setDeviceActive
-    // never throws, so a notification-hub outage here can't fail this login.
-    await Promise.all(
-      evictedSessions
-        .map((s) => s.deviceInfo?.notificationHubDeviceId)
-        .filter(Boolean)
-        .map((deviceId) => notificationHub.setDeviceActive(deviceId, false))
-    );
+    await disableNotificationHubDevices(evictedSessions);
   }
 
-  // Registers this device with notification-hub and mints its first
-  // connect-token inline, using data the client already sent at login/signup
-  // (see deviceMetaSchema) - no separate API call needed on the client's
-  // part for the common "log in, then connect" case. Silently skipped for
-  // web, or for any mobile client not yet sending a deviceId (older builds).
+  // R1 Push build gate (PAKMAPS_R1_PUSH_BACKEND_IMPLEMENTATION_GUIDE.md's
+  // "Scope and rollout"): both this deployment's own build config AND the
+  // client's own request must agree it's a custom-push build before any R1
+  // credential is minted - neither one alone is trusted. When gated on, the
+  // R1 subscription path REPLACES the legacy Device/connect-token
+  // registration below entirely for this session, per the guide's explicit
+  // instruction to stop minting the old connect-token for R1 builds rather
+  // than just withholding it from the response.
+  const isR1PushBuild = env.PUSH_NOTIFICATION_PROVIDER === 'custom' && deviceMeta.pushProvider === 'custom';
+
   let notificationHubInfo = null;
-  if (clientType === 'mobile' && deviceMeta.deviceId) {
+  let r1PushInfo = null;
+
+  if (clientType === 'mobile' && isR1PushBuild && deviceMeta.appInstallationId) {
+    const subscription = await notificationHub.mintSubscription({
+      externalUserId: user.id,
+      appInstallationId: deviceMeta.appInstallationId,
+      packageName: deviceMeta.packageName,
+    });
+    if (subscription) {
+      r1PushInfo = {
+        appId: subscription.appId,
+        subscriptionId: subscription.subscriptionId,
+        credential: subscription.credential,
+        expiresAt: subscription.expiresAt,
+      };
+    }
+  } else if (clientType === 'mobile' && deviceMeta.deviceId) {
+    // Registers this device with notification-hub and mints its first
+    // connect-token inline, using data the client already sent at
+    // login/signup (see deviceMetaSchema) - no separate API call needed on
+    // the client's part for the common "log in, then connect" case.
+    // Silently skipped for web, or for any mobile client not yet sending a
+    // deviceId (older builds).
     const registered = await notificationHub.registerDevice({
       clientDeviceId: deviceMeta.deviceId,
       externalUserId: user.id,
@@ -120,6 +174,7 @@ async function createSessionAndToken(user, clientType, req, deviceMeta = {}) {
       ...getDeviceInfo(req),
       ...deviceMeta,
       ...(notificationHubInfo ? { notificationHubDeviceId: notificationHubInfo.deviceId } : {}),
+      ...(r1PushInfo ? { notificationHubSubscriptionId: r1PushInfo.subscriptionId } : {}),
     },
     ipAddress: getClientIp(req),
     lat,
@@ -132,7 +187,7 @@ async function createSessionAndToken(user, clientType, req, deviceMeta = {}) {
   const accessToken = signToken({ sub: user.id, roleId: user.roleId, clientType, sessionId: session.id });
   const refreshToken = formatRefreshToken(session.id, refreshSecret);
 
-  return { session, accessToken, refreshToken, notificationHub: notificationHubInfo };
+  return { session, accessToken, refreshToken, notificationHub: notificationHubInfo, r1Push: r1PushInfo };
 }
 
 // Verifies a presented refresh token and, if valid, rotates it: a new access
@@ -217,4 +272,5 @@ module.exports = {
   rotateSession,
   serializeUser,
   roleIncludeWithPermissions,
+  disableNotificationHubDevices,
 };

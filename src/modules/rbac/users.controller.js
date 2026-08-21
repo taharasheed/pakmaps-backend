@@ -3,8 +3,9 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { ok, created } = require('../../utils/apiResponse');
 const AppError = require('../../utils/AppError');
 const env = require('../../config/env');
-const { User, Role } = require('../../db/models');
+const { User, Role, Session } = require('../../db/models');
 const { recordAudit } = require('../audit/audit.service');
+const { disableNotificationHubDevices } = require('../auth/auth.service');
 
 const listUsers = asyncHandler(async (req, res) => {
   const { page, pageSize } = req.query;
@@ -62,6 +63,16 @@ const updateUser = asyncHandler(async (req, res) => {
     throw new AppError('You cannot deactivate your own account.', 400);
   }
 
+  // Account disablement revokes push the same way logout/session-revocation
+  // already does (auth.controller.js) - a disabled account shouldn't keep a
+  // live, gateway-rotated daemon credential valid indefinitely just because
+  // no one explicitly logged it out. Fetched before the update so this
+  // still runs even though isActive doesn't live on Session itself.
+  if (req.body.isActive === false && user.isActive) {
+    const sessions = await Session.findAll({ where: { userId: user.id }, attributes: ['id', 'deviceInfo'] });
+    await disableNotificationHubDevices(sessions);
+  }
+
   await user.update(req.body);
   await recordAudit({ req, user: req.user, action: 'update', entityType: 'user', entityId: user.id, changes: req.body });
   return ok(res, user, 'User updated.');
@@ -83,6 +94,9 @@ const deleteUser = asyncHandler(async (req, res) => {
 
   const user = await User.findByPk(req.params.id);
   if (!user) throw new AppError('User not found.', 404);
+
+  const sessions = await Session.findAll({ where: { userId: user.id }, attributes: ['id', 'deviceInfo'] });
+  await disableNotificationHubDevices(sessions);
 
   await user.destroy();
   await recordAudit({ req, user: req.user, action: 'delete', entityType: 'user', entityId: req.params.id });
