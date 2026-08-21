@@ -346,6 +346,19 @@ async function upsertCellSignature(placeId, c) {
   }
 }
 
+// A device sitting in one spot hammering the app for a few minutes must not
+// be able to rack up confirmations by itself and fake full trust - each
+// burst of activity from the same installation only counts as one session
+// unless at least this much time has passed since its last counted anchor.
+//
+// 2 sessions / 5 min is loosened for the field-test phase (2026-08-21,
+// deliberate call, not an oversight) - tighten this back up (5+ sessions,
+// 20+ min gap) before this is allowed to influence real users, since a
+// single device idling for 5 minutes is a much weaker proof of a stable,
+// real location than genuinely separate visits.
+const SESSION_GAP_MS = 5 * 60 * 1000;
+const SAME_DEVICE_SESSIONS_REQUIRED = 2;
+
 async function evaluatePromotion(place) {
   if (place.status !== 'candidate') return;
   const wifiSigCount = await WifiSignature.count({ where: { placeId: place.id } });
@@ -353,15 +366,31 @@ async function evaluatePromotion(place) {
   // or rejected-anchor hit on this place must not count toward promotion.
   const confirmingObservations = await RadioObservation.findAll({
     where: { matchedPlaceId: place.id, requestKind: 'observation' },
-    include: [{ model: AnchorEvidence, as: 'anchorEvidence', required: true, where: { accepted: true } }],
+    include: [{ model: AnchorEvidence, as: 'anchorEvidence', required: true, where: { accepted: true }, attributes: ['createdAt'] }],
     attributes: ['installationId'],
   });
   const acceptedAnchors = confirmingObservations.length;
   const distinctInstallations = new Set(confirmingObservations.map((o) => o.installationId)).size;
 
+  const sortedByInstallation = new Map();
+  for (const obs of confirmingObservations) {
+    const list = sortedByInstallation.get(obs.installationId) ?? [];
+    list.push(obs.anchorEvidence.createdAt.getTime());
+    sortedByInstallation.set(obs.installationId, list);
+  }
+  let maxSessionsForOneInstallation = 0;
+  for (const timestamps of sortedByInstallation.values()) {
+    timestamps.sort((a, b) => a - b);
+    let sessions = 1;
+    for (let i = 1; i < timestamps.length; i += 1) {
+      if (timestamps[i] - timestamps[i - 1] >= SESSION_GAP_MS) sessions += 1;
+    }
+    maxSessionsForOneInstallation = Math.max(maxSessionsForOneInstallation, sessions);
+  }
+
   const isMultiRouter = wifiSigCount >= 2;
   const promote = isMultiRouter
-    ? (acceptedAnchors >= 3 && distinctInstallations >= 2) || acceptedAnchors >= 5
+    ? (acceptedAnchors >= 3 && distinctInstallations >= 2) || maxSessionsForOneInstallation >= SAME_DEVICE_SESSIONS_REQUIRED
     : acceptedAnchors >= 5 && distinctInstallations >= 2;
 
   if (promote) await place.update({ status: 'trusted' });
