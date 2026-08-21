@@ -91,6 +91,12 @@ const schema = z.object({
   // send pushProvider at all) never triggers R1 registration even if it
   // happens to send R1-looking fields.
   PUSH_NOTIFICATION_PROVIDER: z.enum(['', 'custom']).default(''),
+
+  // HMAC key for tokenizing Wi-Fi BSSIDs before they ever touch the DB (see
+  // src/utils/bssid.js) - the radio-positioning matcher must never store a
+  // raw MAC address. Phase 1 / shadow mode only; not yet wired to any
+  // mobile client.
+  POSITIONING_BSSID_PEPPER: z.string().min(32, 'POSITIONING_BSSID_PEPPER must be at least 32 characters'),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -12,6 +12,7 @@ router.use('/statistics', require('../modules/statistics/statistics.routes'));
 router.use('/audit-logs', require('../modules/audit/audit.routes'));
 router.use('/notifications', require('../modules/notifications/notifications.routes'));
 router.use('/notification-hub', require('../modules/notificationHub/notificationHub.routes'));
+router.use('/v1/positioning/radio', require('../modules/positioning/positioning.routes'));
 router.use('/integrations/apps', require('../modules/integrations/notificationApps.routes'));
 router.use('/integrations/notifications', require('../modules/integrations/externalNotifications.routes'));
 router.use('/health', require('../modules/health/health.routes'));
