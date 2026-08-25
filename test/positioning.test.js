@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const { normalizeBssid, isLocallyAdministered, isBroadcastOrMulticast, tokenizeBssid } = require('../src/utils/bssid');
 const { normalizeWifiList, normalizeCellList, evaluateAnchor, decideResolveOutcome, uncertaintyForEvidence, welfordUpdate, haversineMeters } = require('../src/modules/positioning/positioning.service');
+const { trajectoryBodySchema } = require('../src/modules/positioning/positioning.validation');
 
 // --- bssid.js -------------------------------------------------------------
 
@@ -203,4 +204,82 @@ test('haversineMeters returns ~0 for the same point and a sane distance for two 
   // Islamabad (33.6844, 73.0479) to Lahore (31.5497, 74.3436) is ~275km.
   const distance = haversineMeters(33.6844, 73.0479, 31.5497, 74.3436);
   assert.ok(distance > 260000 && distance < 290000, `got ${distance}`);
+});
+
+// --- PDR trajectory request contract ---------------------------------------
+// The DB-dependent half of recordTrajectory (matching the real GNSS anchor,
+// idempotent insert) isn't covered here, same as the rest of this file -
+// verified live against the real DB instead. These cover the hard-reject
+// boundary rules from the request contract, since those are pure zod checks.
+
+function validTrajectoryBody(overrides = {}) {
+  const now = Date.now();
+  return {
+    schema_version: 1,
+    observation_id: '11111111-1111-1111-1111-111111111111',
+    installation_id: 'install-abc',
+    captured_at: new Date(now).toISOString(),
+    platform: 'android',
+    wifi: [{ bssid: '00:1a:2b:33:44:55', rssi_dbm: -50, connected: true, age_ms: 0 }],
+    cells: [],
+    inferred_position: {
+      latitude: 33.684531,
+      longitude: 73.047774,
+      horizontal_uncertainty_m: 11.4,
+      captured_at: new Date(now).toISOString(),
+      source: 'pdr_inferred',
+    },
+    anchor: {
+      captured_at: new Date(now - 30000).toISOString(),
+      horizontal_accuracy_m: 8.0,
+      age_ms: 30000,
+      source: 'platform_stream',
+    },
+    motion: {
+      distance_since_anchor_m: 15.0,
+      steps_since_anchor: 20,
+      heading_deg: 90.0,
+      heading_accuracy_deg: 15.0,
+    },
+    ...overrides,
+  };
+}
+
+function parseTrajectory(overrides = {}) {
+  return trajectoryBodySchema.safeParse({ body: validTrajectoryBody(overrides) });
+}
+
+test('trajectoryBodySchema accepts a well-formed request', () => {
+  assert.equal(parseTrajectory().success, true);
+});
+
+test('trajectoryBodySchema rejects an inferred_position.source other than pdr_inferred', () => {
+  const result = parseTrajectory({ inferred_position: { ...validTrajectoryBody().inferred_position, source: 'gps' } });
+  assert.equal(result.success, false);
+});
+
+test('trajectoryBodySchema rejects uncertainty outside (0, 30]', () => {
+  assert.equal(parseTrajectory({ inferred_position: { ...validTrajectoryBody().inferred_position, horizontal_uncertainty_m: 0 } }).success, false);
+  assert.equal(parseTrajectory({ inferred_position: { ...validTrajectoryBody().inferred_position, horizontal_uncertainty_m: 31 } }).success, false);
+});
+
+test('trajectoryBodySchema rejects anchor age over 60,000ms or non-positive accuracy', () => {
+  assert.equal(parseTrajectory({ anchor: { ...validTrajectoryBody().anchor, age_ms: 60001 } }).success, false);
+  assert.equal(parseTrajectory({ anchor: { ...validTrajectoryBody().anchor, horizontal_accuracy_m: 0 } }).success, false);
+  assert.equal(parseTrajectory({ anchor: { ...validTrajectoryBody().anchor, horizontal_accuracy_m: 26 } }).success, false);
+});
+
+test('trajectoryBodySchema rejects distance since anchor outside (0, 30]m', () => {
+  assert.equal(parseTrajectory({ motion: { ...validTrajectoryBody().motion, distance_since_anchor_m: 0 } }).success, false);
+  assert.equal(parseTrajectory({ motion: { ...validTrajectoryBody().motion, distance_since_anchor_m: 30.1 } }).success, false);
+});
+
+test('trajectoryBodySchema rejects non-positive step counts', () => {
+  assert.equal(parseTrajectory({ motion: { ...validTrajectoryBody().motion, steps_since_anchor: 0 } }).success, false);
+});
+
+test('trajectoryBodySchema rejects heading outside [0, 360) or heading accuracy over 25deg', () => {
+  assert.equal(parseTrajectory({ motion: { ...validTrajectoryBody().motion, heading_deg: 360 } }).success, false);
+  assert.equal(parseTrajectory({ motion: { ...validTrajectoryBody().motion, heading_deg: -1 } }).success, false);
+  assert.equal(parseTrajectory({ motion: { ...validTrajectoryBody().motion, heading_accuracy_deg: 26 } }).success, false);
 });

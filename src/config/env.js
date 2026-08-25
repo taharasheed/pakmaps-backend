@@ -97,6 +97,13 @@ const schema = z.object({
   // raw MAC address. Phase 1 / shadow mode only; not yet wired to any
   // mobile client.
   POSITIONING_BSSID_PEPPER: z.string().min(32, 'POSITIONING_BSSID_PEPPER must be at least 32 characters'),
+
+  // Backend-side rollout gate for the PDR trajectory endpoint (see mobile
+  // dev's "PakMaps indoor PDR backend integration" doc, 2026-08-25) - mirrors
+  // the client's own ENABLE_INDOOR_PDR build flag. Off by default so the
+  // route 404s until deliberately turned on for internal QA / a consented
+  // cohort, same staged-rollout intent as PUSH_NOTIFICATION_PROVIDER above.
+  POSITIONING_PDR_TRAJECTORIES_ENABLED: z.enum(['true', 'false']).default('false'),
 });
 
 const parsed = schema.safeParse(process.env);

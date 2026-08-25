@@ -88,4 +88,40 @@ const observationsBodySchema = z.object({
   params: z.any().optional(),
 });
 
-module.exports = { resolveBodySchema, observationsBodySchema };
+// Trajectory points reference an existing GNSS anchor by metadata only (no
+// lat/lng here) - the real anchor position is resolved server-side from the
+// matching /observations record, never trusted from the client on this call.
+const trajectoryAnchorSchema = z.object({
+  captured_at: z.string().datetime(),
+  horizontal_accuracy_m: z.number().positive().max(25),
+  age_ms: z.number().int().nonnegative().max(60000),
+  source: z.string().min(1).max(30),
+});
+
+const inferredPositionSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  horizontal_uncertainty_m: z.number().positive().max(30),
+  captured_at: z.string().datetime(),
+  source: z.literal('pdr_inferred'),
+});
+
+const motionSchema = z.object({
+  distance_since_anchor_m: z.number().positive().max(30),
+  steps_since_anchor: z.number().int().positive(),
+  heading_deg: z.number().min(0).lt(360),
+  heading_accuracy_deg: z.number().positive().max(25),
+});
+
+const trajectoryBodySchema = z.object({
+  body: z.object({
+    ...baseSnapshotFields,
+    inferred_position: inferredPositionSchema,
+    anchor: trajectoryAnchorSchema,
+    motion: motionSchema,
+  }),
+  query: z.any().optional(),
+  params: z.any().optional(),
+});
+
+module.exports = { resolveBodySchema, observationsBodySchema, trajectoryBodySchema };

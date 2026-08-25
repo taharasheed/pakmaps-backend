@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { authMiddleware } = require('../../middleware/auth.middleware');
 const validate = require('../../middleware/validate');
-const { resolveBodySchema, observationsBodySchema } = require('./positioning.validation');
+const { resolveBodySchema, observationsBodySchema, trajectoryBodySchema } = require('./positioning.validation');
 const controller = require('./positioning.controller');
 
 // Phase 1 / shadow mode: these endpoints exist and are reachable, but no
@@ -11,5 +11,9 @@ const controller = require('./positioning.controller');
 router.use(authMiddleware);
 router.post('/resolve', validate(resolveBodySchema), controller.resolve);
 router.post('/observations', validate(observationsBodySchema), controller.observe);
+// PDR trajectory points - gated behind POSITIONING_PDR_TRAJECTORIES_ENABLED,
+// see positioning.controller.js. Weak inferred evidence only, never learning
+// input - see positioning.service.js's recordTrajectory for the isolation.
+router.post('/trajectories', validate(trajectoryBodySchema), controller.recordTrajectory);
 
 module.exports = router;

@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
-const { RadioPlace, WifiSignature, CellSignature, RadioObservation, WifiObservation, CellObservation, AnchorEvidence, DeviceTrust, sequelize } = require('../../db/models');
+const { RadioPlace, WifiSignature, CellSignature, RadioObservation, WifiObservation, CellObservation, AnchorEvidence, DeviceTrust, RadioInferredTrajectory, sequelize } = require('../../db/models');
 const { normalizeBssid, isLocallyAdministered, isBroadcastOrMulticast, tokenizeBssid } = require('../../utils/bssid');
+const AppError = require('../../utils/AppError');
 
 const MATCHER_VERSION = 'radio-v1.0.0';
 const MAX_OBSERVATION_AGE_MS = 2 * 60 * 1000;
@@ -493,9 +494,101 @@ async function observe(body) {
   };
 }
 
+// --- PDR trajectory ingestion ------------------------------------------
+//
+// See mobile dev's "PakMaps indoor PDR backend integration" doc (2026-08-25).
+// A trajectory point is weak, inferred evidence (step-counter + compass), not
+// proof - it must never reach RadioPlace/WifiSignature/CellSignature or
+// affect evaluatePromotion/resolve. That isolation is structural here: this
+// function only ever writes to RadioInferredTrajectory, and doesn't call any
+// of the upsert*/evaluatePromotion helpers above. Unlike observe()'s anchor
+// handling (which soft-records a rejected anchor as data), every check below
+// is a hard 4xx per the doc's contract - nothing is persisted on rejection.
+const MAX_TRAJECTORY_ANCHOR_AGE_MS = 60 * 1000;
+const TRAJECTORY_ANCHOR_MATCH_WINDOW_MS = 10 * 1000;
+const MAX_TRAJECTORY_SNAPSHOT_AGE_MS = 2 * 60 * 1000;
+const TRAJECTORY_FUTURE_SKEW_TOLERANCE_MS = 5 * 1000;
+const TRAJECTORY_FRESH_WIFI_MAX_AGE_MS = 30 * 1000;
+
+async function findMatchingAnchorObservation(installationId, anchorCapturedAtMs) {
+  return RadioObservation.findOne({
+    where: {
+      installationId,
+      requestKind: 'observation',
+      capturedAt: {
+        [Op.between]: [new Date(anchorCapturedAtMs - TRAJECTORY_ANCHOR_MATCH_WINDOW_MS), new Date(anchorCapturedAtMs + TRAJECTORY_ANCHOR_MATCH_WINDOW_MS)],
+      },
+    },
+    // required: true on the include - only a genuinely GNSS-backed,
+    // accepted anchor counts. A resolve-only hit or a rejected anchor
+    // (mocked, stale, disallowed source) must not be usable as the
+    // authoritative anchor for a trajectory point.
+    include: [{ model: AnchorEvidence, as: 'anchorEvidence', required: true, where: { accepted: true } }],
+    order: [['capturedAt', 'DESC']],
+  });
+}
+
+async function recordTrajectory(body) {
+  const nowMs = Date.now();
+
+  const capturedAtMs = Date.parse(body.captured_at);
+  if (nowMs - capturedAtMs > MAX_TRAJECTORY_SNAPSHOT_AGE_MS || capturedAtMs - nowMs > TRAJECTORY_FUTURE_SKEW_TOLERANCE_MS) {
+    throw new AppError('Trajectory report capture time is stale or in the future.', 400);
+  }
+
+  const anchorCapturedAtMs = Date.parse(body.anchor.captured_at);
+  const anchorAgeMs = nowMs - anchorCapturedAtMs;
+  if (anchorAgeMs > MAX_TRAJECTORY_ANCHOR_AGE_MS || anchorAgeMs < -TRAJECTORY_FUTURE_SKEW_TOLERANCE_MS) {
+    throw new AppError('Trajectory anchor is stale or in the future.', 400);
+  }
+
+  const wifi = normalizeWifiList(body.wifi, capturedAtMs);
+  const cells = normalizeCellList(body.cells);
+  const hasUsableWifi = wifi.some((w) => w.connected || w.ageMs <= TRAJECTORY_FRESH_WIFI_MAX_AGE_MS);
+  if (!hasUsableWifi) {
+    throw new AppError('At least one connected or recently seen Wi-Fi network is required.', 400);
+  }
+
+  const anchorObservation = await findMatchingAnchorObservation(body.installation_id, anchorCapturedAtMs);
+  if (!anchorObservation) {
+    throw new AppError('No matching GNSS-backed observation found for this anchor.', 400);
+  }
+
+  try {
+    await RadioInferredTrajectory.create({
+      requestId: body.observation_id,
+      installationId: body.installation_id,
+      capturedAt: new Date(body.captured_at),
+      anchorObservationId: anchorObservation.id,
+      anchorCapturedAt: new Date(body.anchor.captured_at),
+      anchorAccuracyM: body.anchor.horizontal_accuracy_m,
+      anchorAgeMs: body.anchor.age_ms,
+      anchorSource: body.anchor.source,
+      latitude: body.inferred_position.latitude,
+      longitude: body.inferred_position.longitude,
+      horizontalUncertaintyM: body.inferred_position.horizontal_uncertainty_m,
+      distanceSinceAnchorM: body.motion.distance_since_anchor_m,
+      stepsSinceAnchor: body.motion.steps_since_anchor,
+      headingDeg: body.motion.heading_deg,
+      headingAccuracyDeg: body.motion.heading_accuracy_deg,
+      wifiEvidence: wifi.map((w) => ({ bssid_token: w.bssidToken, rssi_dbm: w.rssiDbm, connected: w.connected, age_ms: w.ageMs })),
+      cellEvidence: cells.map((c) => ({ radio: c.radio, mcc: c.mcc, mnc: c.mnc, area: c.area, cell_id: c.cellId, age_ms: c.ageMs })),
+      wifiCount: wifi.length,
+      cellCount: cells.length,
+    });
+  } catch (err) {
+    // Duplicate observation_id = client retry of an already-accepted point -
+    // idempotent no-op, same pattern as logObservationRow above.
+    if (err.name !== 'SequelizeUniqueConstraintError') throw err;
+  }
+
+  return { schema_version: 1, observation_id: body.observation_id, accepted: true };
+}
+
 module.exports = {
   resolve,
   observe,
+  recordTrajectory,
   normalizeWifiList,
   normalizeCellList,
   evaluateAnchor,
