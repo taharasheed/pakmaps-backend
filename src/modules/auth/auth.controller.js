@@ -136,7 +136,11 @@ const logout = asyncHandler(async (req, res) => {
   if (req.auth?.sessionId) {
     const session = await Session.findByPk(req.auth.sessionId);
     await Session.destroy({ where: { id: req.auth.sessionId } });
-    if (session) await disableNotificationHubDevices([session]);
+    // revokeSubscriptions:false - see disableNotificationHubDevices's
+    // comment. This is the user's own device logging itself out; it isn't
+    // losing access to the account, so its R1 Push subscription must stay
+    // resurrectable on the next ordinary login from the same phone.
+    if (session) await disableNotificationHubDevices([session], { revokeSubscriptions: false });
   }
   await recordAudit({ req, user: req.user, action: 'logout', entityType: 'session', entityId: req.auth?.sessionId });
   clearAuthCookies(res);

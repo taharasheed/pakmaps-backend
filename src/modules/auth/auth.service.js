@@ -44,26 +44,35 @@ async function findUserWithRole(email) {
 // unthrowable, so a notification-hub outage here can't fail the caller's own
 // destroy/logout flow.
 //
-// Disabling on logout (not just on new-login eviction) is a deliberate
-// change from this integration's original design, revisited once the
-// device's own gateway credential became long-lived and gateway-rotated
-// rather than a self-expiring short-TTL token - leaving it valid
-// indefinitely after logout is a materially bigger residual exposure than it
-// used to be. upsertDevice on notification-hub's side always resets
-// isActive:true on the device's next real login, so the Device path is
-// never a one-way trap; the Subscription path is a deliberate exception -
-// see subscriptions.service.js's createSubscription for why a revoked R1
-// subscription does NOT get resurrected by a later mint.
-async function disableNotificationHubDevices(sessions) {
+// The Device path (setDeviceActive false) is always safe to call here -
+// upsertDevice on notification-hub's side always resets isActive:true on the
+// device's next real login, so it's never a one-way trap. The Subscription
+// path (revokeSubscription) is NOT safe to call unconditionally:
+// subscriptions.service.js's createSubscription deliberately refuses to
+// resurrect a revoked subscription for the same (appId, appInstallationId,
+// externalUserId) - by design, a genuine reinstall (fresh appInstallationId)
+// is the only way back. A phone's appInstallationId never changes across an
+// ordinary logout/login, so revoking here permanently locks that phone out
+// of R1 Push the moment it logs back in - discovered 2026-08-25 when a real
+// tester's relogin started permanently 502ing on the credential endpoint.
+// revokeSubscriptions therefore defaults to true (this account is genuinely
+// losing this device's access: evicted by a new-device login, an explicit
+// revokeSession/revokeOtherSessions, or an account disable/delete) and is
+// passed false only from the plain self-logout path, where the same device
+// logging back in moments later is the expected, common case, not a device
+// actually losing access.
+async function disableNotificationHubDevices(sessions, { revokeSubscriptions = true } = {}) {
   await Promise.all([
     ...sessions
       .map((s) => s.deviceInfo?.notificationHubDeviceId)
       .filter(Boolean)
       .map((deviceId) => notificationHub.setDeviceActive(deviceId, false)),
-    ...sessions
-      .map((s) => s.deviceInfo?.notificationHubSubscriptionId)
-      .filter(Boolean)
-      .map((subscriptionId) => notificationHub.revokeSubscription(subscriptionId)),
+    ...(revokeSubscriptions
+      ? sessions
+          .map((s) => s.deviceInfo?.notificationHubSubscriptionId)
+          .filter(Boolean)
+          .map((subscriptionId) => notificationHub.revokeSubscription(subscriptionId))
+      : []),
   ]);
 }
 
