@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const { normalizeFeatureCollection } = require('./searchNormalize');
+const { resolveBoundaryCountry } = require('./boundaryCountry');
 
 // Triggered on every keystroke (onChange) - hits the upstream's fast
 // autocomplete endpoint, not the full search endpoint. See search.adapter.js
@@ -24,7 +25,8 @@ function buildUpstreamRequest(input, service, req) {
   params.set('text', input.q);
   if (input.lat !== undefined) params.set('focus.point.lat', String(input.lat));
   if (input.lon !== undefined) params.set('focus.point.lon', String(input.lon));
-  if (input.boundary_country) params.set('boundary.country', input.boundary_country);
+  const boundaryCountry = resolveBoundaryCountry(input);
+  if (boundaryCountry) params.set('boundary.country', boundaryCountry);
   params.set('size', String(input.size));
 
   return {
