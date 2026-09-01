@@ -50,7 +50,7 @@ const uploadMiddleware = (req, res, next) => {
 const listLayers = asyncHandler(async (req, res) => {
   const { page, pageSize } = req.query;
   const { rows, count } = await ImageryLayer.findAndCountAll({
-    order: [['createdAt', 'DESC']],
+    order: [['priority', 'DESC'], ['createdAt', 'DESC']],
     limit: pageSize,
     offset: (page - 1) * pageSize,
   });
@@ -85,6 +85,12 @@ const uploadLayer = asyncHandler(async (req, res) => {
     throw caught;
   }
 
+  // New uploads default to top priority - the newest capture is usually the
+  // one an admin wants winning ties - but this is just a starting point;
+  // it's freely reorderable afterward from the layers list.
+  const topPriority = await ImageryLayer.max('priority');
+  const priority = Number.isFinite(topPriority) ? topPriority + 1 : 0;
+
   const layer = await ImageryLayer.create({
     name: meta.name,
     slug: slugify(meta.name),
@@ -101,6 +107,7 @@ const uploadLayer = asyncHandler(async (req, res) => {
     boundsNorth: mbtilesMeta.bounds?.north ?? null,
     vectorLayers: mbtilesMeta.vectorLayers,
     isEnabled: false, // admin reviews the preview before making it live
+    priority,
     uploadedBy: req.user.id,
   });
 
@@ -134,9 +141,30 @@ const toggleLayer = asyncHandler(async (req, res) => {
   return ok(res, layer, `Layer ${req.body.isEnabled ? 'enabled' : 'disabled'}.`);
 });
 
+const setPriority = asyncHandler(async (req, res) => {
+  const layer = await ImageryLayer.findByPk(req.params.id);
+  if (!layer) throw new AppError('Layer not found.', 404);
+
+  await layer.update({ priority: req.body.priority });
+
+  await recordAudit({
+    req,
+    user: req.user,
+    action: 'update',
+    entityType: 'imagery_layer',
+    entityId: layer.id,
+    changes: { priority: req.body.priority },
+  });
+
+  return ok(res, layer, 'Priority updated.');
+});
+
 const deleteLayer = asyncHandler(async (req, res) => {
   const layer = await ImageryLayer.findByPk(req.params.id);
   if (!layer) throw new AppError('Layer not found.', 404);
+  if (layer.sourceType === 'proxy') {
+    throw new AppError('This layer is served from the tileserver, not a file upload - disable it instead of deleting.', 400);
+  }
 
   const filePath = path.join(env.IMAGERY_LAYERS_DIR, layer.storedFilename);
   mbtilesReader.closeHandle(filePath);
@@ -148,4 +176,4 @@ const deleteLayer = asyncHandler(async (req, res) => {
   return ok(res, null, 'Layer deleted.');
 });
 
-module.exports = { uploadMiddleware, listLayers, getLayer, uploadLayer, toggleLayer, deleteLayer };
+module.exports = { uploadMiddleware, listLayers, getLayer, uploadLayer, toggleLayer, setPriority, deleteLayer };

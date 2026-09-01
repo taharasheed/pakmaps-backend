@@ -10,6 +10,7 @@ const controller = require('./imageryTiles.controller');
 router.use(proxyAuthMiddleware);
 
 router.get('/', controller.listEnabledLayers);
+router.get('/mosaic/:format/:z/:x/:y', controller.getMosaicTile);
 router.get('/:id/:z/:x/:y', controller.getTile);
 
 module.exports = router;

@@ -14,6 +14,12 @@ const toggleSchema = z.object({
   params: idParam,
 });
 
+const prioritySchema = z.object({
+  body: z.object({ priority: z.coerce.number().int() }),
+  query: z.any().optional(),
+  params: idParam,
+});
+
 const listLayersSchema = z.object({
   body: z.any().optional(),
   query: z.object({
@@ -33,4 +39,4 @@ function slugify(name) {
   return `${base || 'layer'}-${Date.now().toString(36)}`;
 }
 
-module.exports = { uploadMetaSchema, idOnly, toggleSchema, listLayersSchema, slugify };
+module.exports = { uploadMetaSchema, idOnly, toggleSchema, prioritySchema, listLayersSchema, slugify };
