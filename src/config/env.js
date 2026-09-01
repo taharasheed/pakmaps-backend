@@ -61,7 +61,11 @@ const schema = z.object({
   // on the duration Valhalla returns, not a real fix (that needs a live
   // traffic feed); kept as an env knob so it can be re-tuned or disabled (1)
   // without a code change as more benchmark data comes in.
-  ROUTING_DURATION_SCALE: z.coerce.number().positive().default(0.764),
+  // 2026-09-01: further divided by 1.5 (0.764/1.5) on top of the benchmarked
+  // value per product request - ETAs now run faster than the measured-
+  // against-Google-traffic figure above, not just less padded than raw
+  // Valhalla. Revisit if users report ETAs that are too optimistic.
+  ROUTING_DURATION_SCALE: z.coerce.number().positive().default(0.764 / 1.5),
   MAPIFY_V10_INTERNAL_TOKEN: z.string().default('').refine(
     (value) => value === '' || value.length >= 32,
     'MAPIFY_V10_INTERNAL_TOKEN must be empty or at least 32 characters'
